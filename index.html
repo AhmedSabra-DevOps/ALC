@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#12303A">
-<title>ALC – متابعة القرى (ODN)</title>
+<title>ALC – ODN</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#EEF2F3;--ink:#12303A;--mut:#5B7680;--line:#CBD6DA;--acc:#0B7A75;--warn:#C2410C;--card:#fff}
@@ -32,6 +32,11 @@ summary{cursor:pointer}details details{background:var(--bg)}
 .box{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding:4px 0}.box select{margin:0;flex:1}
 footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 .login{margin-top:10vh}
+.sm{padding:4px 10px;margin:4px 0 0 4px;font-size:13px}
+#ov{display:none;position:fixed;inset:0;background:#0007;z-index:8}
+#drw{position:fixed;top:0;bottom:0;inset-inline-start:0;width:75%;max-width:300px;background:var(--card);z-index:9;transform:translateX(100%);transition:.2s;padding:16px;overflow:auto}
+.o #drw{transform:none}.o #ov{display:block}
+.mi{display:block;width:100%;text-align:start;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:14px 4px;font-weight:400}
 </style>
 </head>
 <body>
@@ -56,17 +61,20 @@ const pct = b => b.length ? Math.round(b.reduce((s, x) => s + x.stage, 0) / (7 *
 const by = (a, k, id) => a.filter(x => x[k] == id);
 const opts = (L, v) => L.map((s, i) => `<option value="${i}" ${v == i ? 'selected' : ''}>${s}</option>`).join('');
 const msg = e => /8 boxes/.test(e) ? 'الـ Line فيها 8 بوكسات بالفعل' : e;
-const FOOT = '<footer>تطوير Ahmed Sabra · ALC</footer>';
-let me, V = [], cur, D = {};
+const FOOT = '<footer dir="ltr">Designed &amp; Developed by Ahmed Sabra · © 2026</footer>';
+let me, V = [], VS = [], cur, D = {};
 
+function menu(on) { document.body.classList.toggle('o', on === undefined ? !document.body.classList.contains('o') : !!on); }
+function go(f) { menu(0); window[f](); }
 function shell(title, body, back) {
-  app.innerHTML = `<header>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small><button class="ghost" onclick="logout()">خروج</button></header><main>${body}</main>${FOOT}`;
-  scrollTo(0, 0);
+  const mi = (f, t) => `<button class="mi" onclick="go('${f}')">${t}</button>`;
+  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
+  menu(0); scrollTo(0, 0);
 }
 
 // ---------- الدخول ----------
 function loginView() {
-  app.innerHTML = `<main class="login"><h2>ALC – متابعة القرى (ODN)</h2><label>اسم المستخدم</label><input id="u" autocapitalize="none" autocomplete="username"><label>كلمة السر</label><input id="p" type="password" autocomplete="current-password"><button onclick="login()">دخول</button></main>${FOOT}`;
+  app.innerHTML = `<main class="login"><h2>ALC – ODN</h2><label>اسم المستخدم</label><input id="u" autocapitalize="none" autocomplete="username"><label>كلمة السر</label><input id="p" type="password" autocomplete="current-password"><button onclick="login()">دخول</button></main>${FOOT}`;
 }
 async function login() {
   const { error } = await sb.auth.signInWithPassword({ email: $('#u').value.trim().toLowerCase() + '@odn-village.app', password: $('#p').value });
@@ -162,32 +170,36 @@ async function importCsv(vid) {
   villageView(vid, 'n');
 }
 
-// ---------- التحديثات ----------
+// ---------- التحديثات والمشاكل ----------
+const canEd = x => adm() || (x.created_by === me.id && Date.now() - new Date(x.created_at) < 864e5);
+const acts = (x, t, f) => canEd(x) ? `<br><button class="ghost sm" onclick="${f}(${x.id})">تعديل</button><button class="ghost sm" onclick="delRow('${t}',${x.id})">حذف</button>` : '';
 function updatesTab() {
-  return `<button onclick="updateForm()">إضافة تحديث</button>` + (D.u.map(u => `<div class="tl"><div class="date">${esc(u.work_date)} – ${esc(u.contractors?.name || 'بدون مقاول')}</div>${esc(u.work_done)}${u.hub_codes?.length ? `<div class="hub">Hubs: ${u.hub_codes.map(esc).join('، ')}</div>` : ''}${u.attendance ? `<br><small>الحضور: ${esc(u.attendance)}</small>` : ''}${u.notes ? `<br><small>${esc(u.notes)}</small>` : ''}<br><small class="by">سجّله ${esc(D.nm[u.created_by] || '؟')}</small></div>`).join('') || '<p>مفيش تحديثات.</p>');
+  return `<button onclick="updateForm()">إضافة تحديث</button>` + (D.u.map(u => `<div class="tl"><div class="date">${esc(u.work_date)} – ${esc(u.contractors?.name || 'بدون مقاول')}</div>${esc(u.work_done)}${u.hub_codes?.length ? `<div class="hub">Hubs: ${u.hub_codes.map(esc).join('، ')}</div>` : ''}${u.attendance ? `<br><small>الحضور: ${esc(u.attendance)}</small>` : ''}${u.notes ? `<br><small>${esc(u.notes)}</small>` : ''}<br><small class="by">سجّله ${esc(D.nm[u.created_by] || '؟')}</small>${acts(u, 'updates', 'updateForm')}</div>`).join('') || '<p>مفيش تحديثات.</p>');
 }
-async function updateForm() {
+async function updateForm(eid) {
+  const e = D.u.find(x => x.id == eid) || {};
   const { data: c } = await sb.from('contractors').select('*').order('name');
-  shell('تحديث جديد', `<label>التاريخ</label><input id="d" type="date" value="${new Date().toISOString().slice(0, 10)}"><label>المقاول</label><select id="c"><option value="">—</option>${(c || []).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><label>الشغل اللي اتعمل</label><textarea id="w"></textarea><label>الـ Hubs اللي اشتغلت عليها</label>${D.h.map(h => `<label><input type="checkbox" class="hk" value="${esc(h.code)}" style="width:auto"> Hub ${esc(h.code)}</label>`).join('') || '<small>مفيش Hubs لسه</small>'}<br><label>مين كان موجود</label><input id="a"><label>ملاحظات</label><textarea id="n"></textarea><small>حالات البوكسات بتتغير من تبويب الشبكة.</small><br><button onclick="saveUpdate()">حفظ التحديث</button>`, `villageView(${cur},'u')`);
+  shell(eid ? 'تعديل التحديث' : 'تحديث جديد', `<label>التاريخ</label><input id="d" type="date" value="${esc(e.work_date || new Date().toISOString().slice(0, 10))}"><label>المقاول</label><select id="c"><option value="">—</option>${(c || []).map(x => `<option value="${x.id}" ${e.contractor_id == x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><label>الشغل اللي اتعمل</label><textarea id="w">${esc(e.work_done)}</textarea><label>الـ Hubs اللي اشتغلت عليها</label>${D.h.map(h => `<label><input type="checkbox" class="hk" value="${esc(h.code)}" style="width:auto" ${(e.hub_codes || []).includes(h.code) ? 'checked' : ''}> Hub ${esc(h.code)}</label>`).join('') || '<small>مفيش Hubs لسه</small>'}<br><label>مين كان موجود</label><input id="a" value="${esc(e.attendance)}"><label>ملاحظات</label><textarea id="n">${esc(e.notes)}</textarea><button onclick="saveUpdate(${eid || 0})">حفظ</button>`, `villageView(${cur},'u')`);
 }
-async function saveUpdate() {
+async function saveUpdate(eid) {
   const w = $('#w').value.trim(); if (!w) return alert('اكتب الشغل اللي اتعمل');
-  const { error } = await sb.from('updates').insert({ village_id: cur, work_date: $('#d').value, contractor_id: $('#c').value || null, work_done: w, hub_codes: [...document.querySelectorAll('.hk:checked')].map(x => x.value), attendance: $('#a').value.trim() || null, notes: $('#n').value.trim() || null });
-  if (error) return alert('التحديث ماتحفظش: ' + error.message);
+  const row = { work_date: $('#d').value, contractor_id: $('#c').value || null, work_done: w, hub_codes: [...document.querySelectorAll('.hk:checked')].map(x => x.value), attendance: $('#a').value.trim() || null, notes: $('#n').value.trim() || null };
+  const { data, error } = await (eid ? sb.from('updates').update(row).eq('id', eid).select() : sb.from('updates').insert({ ...row, village_id: cur }).select());
+  if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
   villageView(cur, 'u');
 }
-
-// ---------- المشاكل ----------
 function issuesTab() {
-  return `<button onclick="issueForm()">إضافة مشكلة</button>` + (D.i.map(i => `<div class="row ${i.status}"><b>${esc(i.title)}</b> <small>${i.status === 'open' ? 'مفتوحة' : 'اتحلت'}</small><br>${esc(i.details || '')}<br><small class="by">سجّلها ${esc(D.nm[i.created_by] || '؟')}</small>${i.status === 'open' ? `<br><button onclick="resolveIssue(${i.id})">تم الحل</button>` : ''}</div>`).join('') || '<p>مفيش مشاكل.</p>');
+  return `<button onclick="issueForm()">إضافة مشكلة</button>` + (D.i.map(i => `<div class="row ${i.status}"><b>${esc(i.title)}</b> <small>${i.status === 'open' ? 'مفتوحة' : 'اتحلت'}</small><br>${esc(i.details || '')}<br><small class="by">سجّلها ${esc(D.nm[i.created_by] || '؟')}</small>${i.status === 'open' ? `<br><button onclick="resolveIssue(${i.id})">تم الحل</button>` : ''}${acts(i, 'issues', 'issueForm')}</div>`).join('') || '<p>مفيش مشاكل.</p>');
 }
-function issueForm() {
-  shell('مشكلة جديدة', `<label>العنوان</label><input id="t"><label>التفاصيل</label><textarea id="x"></textarea><button onclick="saveIssue()">حفظ المشكلة</button>`, `villageView(${cur},'i')`);
+function issueForm(eid) {
+  const e = D.i.find(x => x.id == eid) || {};
+  shell(eid ? 'تعديل المشكلة' : 'مشكلة جديدة', `<label>العنوان</label><input id="t" value="${esc(e.title)}"><label>التفاصيل</label><textarea id="x">${esc(e.details)}</textarea><button onclick="saveIssue(${eid || 0})">حفظ</button>`, `villageView(${cur},'i')`);
 }
-async function saveIssue() {
+async function saveIssue(eid) {
   const t = $('#t').value.trim(); if (!t) return alert('اكتب عنوان للمشكلة');
-  const { error } = await sb.from('issues').insert({ village_id: cur, title: t, details: $('#x').value.trim() || null });
-  if (error) return alert('المشكلة ماتحفظتش: ' + error.message);
+  const row = { title: t, details: $('#x').value.trim() || null };
+  const { data, error } = await (eid ? sb.from('issues').update(row).eq('id', eid).select() : sb.from('issues').insert({ ...row, village_id: cur }).select());
+  if (error || !data.length) return alert('ماتحفظتش: ' + (error ? error.message : 'مفيش صلاحية'));
   villageView(cur, 'i');
 }
 async function resolveIssue(i) {
@@ -195,16 +207,23 @@ async function resolveIssue(i) {
   if (error) return alert(error.message);
   villageView(cur, 'i');
 }
+async function delRow(t, id) {
+  if (!confirm('متأكد من الحذف؟')) return;
+  const { data, error } = await sb.from(t).delete().eq('id', id).select();
+  if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, t === 'updates' ? 'u' : 'i');
+}
 
 // ---------- الإدارة ----------
 async function adminView() {
-  const [{ data: ps }, { data: cs }, { data: al }] = await Promise.all([
+  const [{ data: ps }, { data: cs }, { data: al }, { data: vs }] = await Promise.all([
     sb.from('profiles').select('*').order('full_name'), sb.from('contractors').select('*').order('name'),
-    sb.from('audit_log').select('*').order('id', { ascending: false }).limit(30)]);
+    sb.from('audit_log').select('*').order('id', { ascending: false }).limit(30), sb.from('villages').select('*').order('name')]);
+  VS = vs || [];
   const nm = Object.fromEntries((ps || []).map(p => [p.id, p.full_name])), own = me.role === 'owner';
   const R = { owner: 'مالك', admin: 'إدارة', engineer: 'مهندس' };
-  shell('الإدارة', `<h3>قرية جديدة</h3><input id="vn" placeholder="اسم القرية"><input id="vg" placeholder="المحافظة"><button onclick="addVillage()">إضافة القرية</button>
-<h3>مقاول جديد</h3><input id="cn" placeholder="اسم المقاول"><button onclick="addContractor()">إضافة المقاول</button><br><small>${(cs || []).map(c => esc(c.name)).join('، ')}</small>
+  shell('الإدارة', `<h3>قرية جديدة</h3><input id="vn" placeholder="اسم القرية"><input id="vg" placeholder="المحافظة"><button onclick="addVillage()">إضافة القرية</button>${VS.map(v => `<div class="row">${esc(v.name)} <button class="ghost sm" onclick="renameRow('villages',${v.id})">تعديل</button><button class="ghost sm" onclick="delVillage(${v.id})">حذف</button></div>`).join('')}
+<h3>مقاول جديد</h3><input id="cn" placeholder="اسم المقاول"><button onclick="addContractor()">إضافة المقاول</button>${(cs || []).map(c => `<div class="row">${esc(c.name)} <button class="ghost sm" onclick="renameRow('contractors',${c.id})">تعديل</button><button class="ghost sm" onclick="delTop('contractors',${c.id})">حذف</button></div>`).join('')}
 <h3>المستخدمين</h3><small>الحسابات الجديدة بتتعمل من لوحة Supabase وبعدين تظهر هنا.</small>${(ps || []).map(p => `<div class="row"><b>${esc(p.full_name)}</b> <small>${esc(p.username)} · ${R[p.role]}</small><br>${own ? `<select onchange="setProfile('${p.id}',{role:this.value})">${Object.keys(R).map(k => `<option value="${k}" ${p.role === k ? 'selected' : ''}>${R[k]}</option>`).join('')}</select>` : ''}${own || p.role === 'engineer' ? `<label><input type="checkbox" style="width:auto" ${p.active ? 'checked' : ''} onchange="setProfile('${p.id}',{active:this.checked})"> مفعّل</label><button class="ghost" onclick="renameUser('${p.id}')">تعديل الاسم</button>` : ''}</div>`).join('')}
 ${own ? '<small>لتعيين مالك احتياطي: غيّر دور المستخدم إلى "مالك".</small>' : ''}
 <h3>آخر التعديلات والحذف</h3>${(al || []).map(a => `<div class="row"><small>${esc(new Date(a.at).toLocaleString('ar-EG'))}<br>${esc(nm[a.actor] || '؟')}: ${a.action==='delete'?'حذف':'تعديل'} في ${esc(a.table_name)} رقم ${esc(a.row_id)}</small></div>`).join('') || '<small>لسه مفيش.</small>'}`, 'villagesView()');
@@ -225,6 +244,43 @@ async function setProfile(id, patch) { const { error } = await sb.from('profiles
 async function renameUser(id) {
   const n = prompt('الاسم الكامل'); if (!n) return;
   await sb.from('profiles').update({ full_name: n.trim() }).eq('id', id); adminView();
+}
+async function renameRow(t, id) {
+  const n = prompt('الاسم الجديد'); if (!n || !n.trim()) return;
+  const { data, error } = await sb.from(t).update({ name: n.trim() }).eq('id', id).select();
+  if (error || !data.length) return alert('ماتعدّلش: ' + (error ? error.message : 'مفيش صلاحية'));
+  adminView();
+}
+async function delTop(t, id) {
+  if (!confirm('متأكد من الحذف؟')) return;
+  const { data, error } = await sb.from(t).delete().eq('id', id).select();
+  if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية'));
+  adminView();
+}
+async function delVillage(id) {
+  const v = VS.find(x => x.id == id);
+  if (prompt('الحذف هيمسح كل بيانات القرية. اكتب اسمها للتأكيد:') !== v.name) return alert('الاسم مش مطابق، اتلغى الحذف');
+  delTop('villages', id);
+}
+async function openIssuesView() {
+  const [{ data: i }, { data: v }] = await Promise.all([sb.from('issues').select('*').eq('status', 'open').order('id', { ascending: false }), sb.from('villages').select('id,name')]);
+  const nm = Object.fromEntries((v || []).map(x => [x.id, x.name]));
+  shell('المشاكل المفتوحة', (i || []).map(x => `<div class="row open tap" onclick="gotoV(${x.village_id})"><b>${esc(x.title)}</b><br><small>${esc(nm[x.village_id] || '')}</small></div>`).join('') || '<p>مفيش مشاكل مفتوحة.</p>', 'villagesView()');
+}
+async function gotoV(id) {
+  if (!V.find(x => x.id == id)) V = (await sb.from('villages').select('*').order('name')).data || [];
+  villageView(id, 'i');
+}
+function accountView() {
+  shell('حسابي', `<h3>${esc(me.full_name)}</h3><small>${esc(me.username)}</small><h3>تغيير كلمة السر</h3><input id="np" type="password" placeholder="كلمة السر الجديدة" autocomplete="new-password"><input id="np2" type="password" placeholder="أعد كتابتها" autocomplete="new-password"><button onclick="changePw()">حفظ</button>`, 'villagesView()');
+}
+async function changePw() {
+  const a = $('#np').value;
+  if (a.length < 8) return alert('كلمة السر لازم تكون 8 حروف على الأقل');
+  if (a !== $('#np2').value) return alert('الكلمتين مش متطابقتين');
+  const { error } = await sb.auth.updateUser({ password: a });
+  if (error) return alert(error.message);
+  alert('تم تغيير كلمة السر'); villagesView();
 }
 boot();
 </script>
