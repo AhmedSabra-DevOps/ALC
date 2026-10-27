@@ -42,6 +42,7 @@ footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 <body>
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ===== حط بيانات مشروعك هنا (Supabase > Project Settings > API) =====
 const SUPABASE_URL = 'https://usrobwubmddccrpzzjeg.supabase.co';
@@ -117,7 +118,10 @@ async function villageView(id, tab = 's') {
 
 function summaryTab() {
   const open = D.i.filter(x => x.status === 'open'), last = D.u[0];
-  return `<b>${pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${pct(D.b)}%"></i></div>
+  const S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), bd = S('boxes_design'), bn = S('boxes_done'), cd = S('cables_design'), cn = S('cables_done');
+  const hubPct = bd ? hp(bn, bd) : null, warn = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)).length;
+  const hubLine = bd ? `<div class="hub">صناديق: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">كابلات: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم رقم منفذ أكبر من التصميم، راجعهم</div>` : ''}` : '';
+  return `<b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}
 ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).map(x => `<div class="hub">${x[0]}: ${x[1]}</div>`).join('')}
 <h3>آخر تحديث</h3>${last ? `${esc(last.work_date)} – ${esc(last.contractors?.name || 'بدون مقاول')}<br>${esc(last.work_done)}<br><small>سجّله ${esc(D.nm[last.created_by] || '؟')}</small>` : '<p>مفيش تحديثات.</p>'}
 <h3>المشاكل المفتوحة (${open.length})</h3>${open.map(x => `<div class="row open">${esc(x.title)}</div>`).join('') || '<p>مفيش.</p>'}`;
@@ -127,10 +131,11 @@ ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).
 function networkTab() {
   const boxH = b => `<div class="box"><span>${esc(b.code)}</span><select onchange="setStage(${b.id},this.value)">${opts(ST, b.stage)}</select></div>${b.cable_len ? `<small>الكابل: ${esc(b.cable_len)} م</small>` : ''}${b.handover_to ? `<small> · استلم: ${esc(b.handover_to)}</small>` : ''}`;
   const lineH = l => { const bs = by(D.b, 'line_id', l.id); return `<details><summary>Line ${esc(l.code)} <small>${bs.length}/8 · ${bs.reduce((s, x) => s + (+x.cable_len || 0), 0)} م</small></summary>${bs.map(boxH).join('')}</details>`; };
-  const hubH = h => { const ls = by(D.l, 'hub_id', h.id), bs = D.b.filter(x => ls.some(l => l.id == x.line_id)); return `<details><summary>Hub ${esc(h.code)} <small>${pct(bs)}% · ${ls.length} Line · ${bs.length} Box</small></summary><select onchange="setHub(${h.id},this.value)">${opts(HS, h.stage)}</select>${ls.map(lineH).join('')}</details>`; };
+  const hubH = h => { const ls = by(D.l, 'hub_id', h.id);
+    return `<details><summary>Hub ${esc(h.code)} <small>${hubStat(h)}</small></summary><div class="hub">${hubExtra(h)}</div><button class="ghost sm" onclick="hubEdit(${h.id})">تعديل الأرقام</button><select onchange="setHub(${h.id},this.value)">${opts(HS, h.stage)}</select>${ls.map(lineH).join('')}</details>`; };
   const feedH = f => `<details><summary>Feeder ${esc(f.code)} <small>مخطط ${f.planned_len ?? '—'} م · ${by(D.h, 'feeder_id', f.id).length} Hub</small></summary>${by(D.h, 'feeder_id', f.id).map(hubH).join('')}</details>`;
   const cabH = c => `<details><summary><b>Main ${esc(c.code)}</b> <small>${esc(c.address || '')} · ${by(D.f, 'cabinet_id', c.id).length} Feeder</small></summary>${by(D.f, 'cabinet_id', c.id).map(feedH).join('')}</details>`;
-  return (adm() ? `<label>استيراد من Excel (احفظه CSV)</label><input type="file" id="f" accept=".csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
+  return (adm() ? `<label>استيراد من Excel أو CSV</label><input type="file" id="f" accept=".xlsx,.xls,.csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
 }
 async function setStage(id, v) {
   v = +v; const p = { stage: v };
@@ -142,7 +147,8 @@ async function setStage(id, v) {
 async function setHub(id, v) { const { error } = await sb.from('hubs').update({ stage: +v }).eq('id', id); if (error) alert(error.message); }
 
 async function importCsv(vid) {
-  const file = $('#f').files[0]; if (!file) return alert('اختار ملف CSV');
+  const file = $('#f').files[0]; if (!file) return alert('اختار ملف');
+  if (/\.xlsx?$/i.test(file.name)) return importXlsx(vid, file);
   const lines = (await file.text()).replace(/^\uFEFF/, '').trim().split(/\r?\n/), d = lines[0].includes(',') ? ',' : ';';
   const H = lines[0].split(d).map(x => x.trim()), mem = {}; let n = 0;
   const up = async (t, o, conf, key) => {
@@ -281,6 +287,76 @@ async function changePw() {
   const { error } = await sb.auth.updateUser({ password: a });
   if (error) return alert(error.message);
   alert('تم تغيير كلمة السر'); villagesView();
+}
+const hp = (a, b) => b ? Math.round(a / b * 100) : 0;
+const ov = (a, b) => a != null && b != null && a > b;
+const hubStat = h => `صناديق ${h.boxes_done ?? '—'}/${h.boxes_design ?? '—'}${ov(h.boxes_done, h.boxes_design) ? ' ⚠' : ''} · كابلات ${h.cables_done ?? '—'}/${h.cables_design ?? '—'}${ov(h.cables_done, h.cables_design) ? ' ⚠' : ''}`;
+const EL = { co: 'المقاول', sbc: 'SBC', new_code: 'الكود الجديد', holder: 'Holder', hdpe: 'HDPE م', adss96: 'ADSS 96F م', adss48: 'ADSS 48F م', hook: 'Hook', tension: 'Tension clamp', joint: 'Joint', olt: 'OLT', hubspl: 'Hub spliced', pretest: 'Pretest', pat: 'PAT', total_cables: 'إجمالي الكابلات', not_box: 'NOT BOX', not_cable: 'NOT CABLE', flat: 'flat' };
+const fv = v => v === true ? 'تم' : v === false ? 'لا' : v;
+function hubExtra(h) {
+  const x = h.extra || {}, a = Object.keys(EL).filter(k => x[k] != null && x[k] !== '').map(k => `${EL[k]}: ${esc(fv(x[k]))}`);
+  const o = (t, m, u) => m && Object.keys(m).length ? `${t}: ` + Object.entries(m).map(([k, v]) => `${k}${u}=${esc(v)}`).join('، ') : '';
+  return [...a, o('Ports', x.ports, ''), o('الكابلات', x.lens, 'م')].filter(Boolean).join('<br>') || '<small>مفيش تفاصيل</small>';
+}
+function hubEdit(id) {
+  const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`;
+  shell('Hub ' + h.code, f('boxes_design', 'صناديق (التصميم)') + f('boxes_done', 'صناديق (المنفذ)') + f('cables_design', 'كابلات (التصميم)') + f('cables_done', 'كابلات (المنفذ)') + `<button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
+}
+async function saveHub(id) {
+  const n = k => $('#' + k).value === '' ? null : +$('#' + k).value;
+  const row = { boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done') };
+  const { data, error } = await sb.from('hubs').update(row).eq('id', id).select();
+  if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, 'n');
+}
+function parseSheet(wb) {
+  const norm = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  let rows, hi = -1;
+  for (const sn of wb.SheetNames) {
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
+    hi = rows.findIndex(r => { const n = r.map(norm); return n.includes('hub') && n.includes('feeder'); });
+    if (hi >= 0) break;
+  }
+  if (hi < 0) return null;
+  const H = rows[hi].map(norm), ix = re => H.findIndex(x => re.test(x));
+  const I = { co: ix(/^co$/), sbc: ix(/^sbc$/), num: ix(/^number$/), feeder: ix(/^feeder$/), hub: ix(/^hub$/), nh: ix(/^newhub$/), bd: ix(/^subqtyindesign$/), bn: ix(/^subcompleted$/), cd: ix(/^cabelsqtyindesign$/), cn: ix(/^cablefinished$/), holder: ix(/^holder$/), hdpe: ix(/^hdpe32m$/), a96: ix(/^adss96flengthm$/), a48: ix(/^adss48flengthm$/), hook: ix(/^noofhook$/), ten: ix(/^nooftensionclamp$/), jo: ix(/^jointsplicedinmanholeyesno$/), olt: ix(/^oltsplicedyesno$/), hs: ix(/^hubsplicedyesno$/), tot: ix(/^totalcables$/), pre: ix(/^pretestdoneornot$/), pat: ix(/^patdoneornot$/), nb: ix(/^notbox$/), nc: ix(/^notcable$/), fl: ix(/^flat$/) };
+  const ports = [], lens = [];
+  H.forEach((x, i) => { let m; if ((m = x.match(/^noof(\d+)portsfebs$/))) ports.push([m[1], i]); if ((m = x.match(/^noofpreconnected(\d+)m$/))) lens.push([m[1], i]); });
+  const num = v => (v === '' || isNaN(+v)) ? null : +v;
+  const yn = v => /^(yes|done)$/i.test(v) ? true : /^(no|not)$/i.test(v) ? false : null;
+  const last = {}, out = [];
+  for (const r of rows.slice(hi + 1)) {
+    const g = i => i < 0 ? '' : String(r[i] ?? '').trim();
+    for (const k of ['co', 'sbc', 'num', 'feeder']) if (g(I[k])) last[k] = g(I[k]);
+    const hub = g(I.hub); if (!/^h\d+$/i.test(hub)) continue;
+    const pick = L => Object.fromEntries(L.filter(([, i]) => g(i) !== '').map(([k, i]) => [k, num(g(i))]));
+    const extra = { co: last.co, sbc: last.sbc, new_code: g(I.nh), holder: num(g(I.holder)), hdpe: num(g(I.hdpe)), adss96: num(g(I.a96)), adss48: num(g(I.a48)), hook: num(g(I.hook)), tension: num(g(I.ten)), joint: yn(g(I.jo)), olt: yn(g(I.olt)), hubspl: yn(g(I.hs)), total_cables: num(g(I.tot)), pretest: yn(g(I.pre)), pat: yn(g(I.pat)), not_box: g(I.nb), not_cable: g(I.nc), flat: g(I.fl), ports: pick(ports), lens: pick(lens) };
+    out.push({ cabinet: last.num || 'MAIN', feeder: last.feeder || 'F?', hub, row: { boxes_design: num(g(I.bd)), boxes_done: num(g(I.bn)), cables_design: num(g(I.cd)), cables_done: num(g(I.cn)), extra } });
+  }
+  return out;
+}
+async function importXlsx(vid, file) {
+  const list = parseSheet(XLSX.read(await file.arrayBuffer(), { type: 'array' }));
+  if (!list) return alert('ماقدرتش ألاقي صف العناوين (لازم فيه HUB و Feeder)');
+  if (!list.length) return alert('مفيش صفوف Hubs في الشيت');
+  const mem = {}; let n = 0;
+  const up = async (t, o, conf, key) => {
+    if (mem[key]) return mem[key];
+    const { data, error } = await sb.from(t).upsert(o, { onConflict: conf }).select().single();
+    if (error) throw new Error(t + ': ' + error.message);
+    return mem[key] = data;
+  };
+  try {
+    for (const x of list) {
+      const c = await up('cabinets', { village_id: vid, code: x.cabinet }, 'village_id,code', 'c' + x.cabinet);
+      const f = await up('feeders', { village_id: vid, cabinet_id: c.id, code: x.feeder }, 'cabinet_id,code', 'f' + c.id + x.feeder);
+      const { error } = await sb.from('hubs').upsert({ village_id: vid, feeder_id: f.id, code: x.hub, ...x.row }, { onConflict: 'feeder_id,code' });
+      if (error) throw new Error(error.message);
+      n++;
+    }
+  } catch (e) { alert('وقف الاستيراد بعد ' + n + ' Hub: ' + e.message); return villageView(vid, 'n'); }
+  alert('تم استيراد ' + n + ' Hub');
+  villageView(vid, 'n');
 }
 boot();
 </script>
