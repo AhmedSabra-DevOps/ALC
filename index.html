@@ -73,7 +73,7 @@ function menu(on) { document.body.classList.toggle('o', on === undefined ? !docu
 function go(f) { menu(0); window[f](); }
 function shell(title, body, back) {
   const mi = (f, t) => `<button class="mi" onclick="go('${f}')">${t}</button>`;
-  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('dashView', 'لوحة المتابعة')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
+  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('dashView', 'لوحة المتابعة')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') + mi('logsView', 'السجل (Logs)') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
   menu(0); scrollTo(0, 0);
 }
 
@@ -134,13 +134,13 @@ ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).
 
 // ---------- الشبكة ----------
 function networkTab() {
-  const boxH = b => `<div class="box"><span>${esc(b.code)}</span><select onchange="setStage(${b.id},this.value)">${opts(ST, b.stage)}</select></div>${b.cable_len ? `<small>Cable: ${esc(b.cable_len)} م</small>` : ''}${b.handover_to ? `<small> · استلم: ${esc(b.handover_to)}</small>` : ''}`;
+  const boxH = b => `<div class="box"><span>${esc(b.code)}</span><select onchange="setStage(${b.id},this.value)">${opts(ST, b.stage)}</select></div>${adm() ? `<button class="ghost sm" onclick="boxEdit(${b.id})">تعديل</button>${nd('boxes', b.id, 'الـ Box')}` : ''}${b.cable_len ? `<small>Cable: ${esc(b.cable_len)} م</small>` : ''}${b.handover_to ? `<small> · استلم: ${esc(b.handover_to)}</small>` : ''}`;
   const lineH = l => { const bs = by(D.b, 'line_id', l.id); return `<details><summary>Line ${esc(l.code)} <small>${bs.length}/8 · ${bs.reduce((s, x) => s + (+x.cable_len || 0), 0)} م</small></summary>${bs.map(boxH).join('')}</details>`; };
   const hubH = h => { const ls = by(D.l, 'hub_id', h.id);
     return `<details><summary>Hub ${esc(h.code)} <small>${hubStat(h)}</small></summary><div class="hub">${hubExtra(h)}</div><button class="ghost sm" onclick="hubEdit(${h.id})">تعديل الأرقام</button>${nd('hubs', h.id, 'الـ Hub')}<select onchange="setHub(${h.id},this.value)">${opts(HS, h.stage)}</select>${ls.map(lineH).join('')}</details>`; };
   const feedH = f => `<details><summary>Feeder ${esc(f.code)} <small>مخطط ${f.planned_len ?? '—'} م · ${by(D.h, 'feeder_id', f.id).length} Hub</small></summary>${nd('feeders', f.id, 'الـ Feeder')}${by(D.h, 'feeder_id', f.id).map(hubH).join('')}</details>`;
   const cabH = c => `<details><summary><b>Main ${esc(c.code)}</b> <small>${esc(c.address || '')} · ${by(D.f, 'cabinet_id', c.id).length} Feeder</small></summary>${nd('cabinets', c.id, 'الـ Main')}${by(D.f, 'cabinet_id', c.id).map(feedH).join('')}</details>`;
-  return (adm() ? `<label>استيراد من Excel أو CSV</label><input type="file" id="f" accept=".xlsx,.xls,.csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><button class="ghost" onclick="clearNet()">مسح كل شبكة القرية</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
+  return (adm() ? `<label>استيراد من Excel أو CSV</label><input type="file" id="f" accept=".xlsx,.xls,.csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><button class="ghost" onclick="clearNet()">مسح كل شبكة القرية</button><br><button class="ghost sm" onclick="netForm('main')">+ Main</button><button class="ghost sm" onclick="netForm('feeder')">+ Feeder</button><button class="ghost sm" onclick="netForm('hub')">+ Hub</button><button class="ghost sm" onclick="netForm('box')">+ Box</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
 }
 async function setStage(id, v) {
   v = +v; const p = { stage: v };
@@ -237,7 +237,7 @@ async function adminView() {
 <h3>مقاول جديد</h3><input id="cn" placeholder="اسم المقاول"><button onclick="addContractor()">إضافة المقاول</button>${(cs || []).map(c => `<div class="row">${esc(c.name)} <button class="ghost sm" onclick="renameRow('contractors',${c.id})">تعديل</button><button class="ghost sm" onclick="delTop('contractors',${c.id})">حذف</button></div>`).join('')}
 <h3>المستخدمين</h3><small>الحسابات الجديدة بتتعمل من لوحة Supabase وبعدين تظهر هنا.</small>${(ps || []).map(p => `<div class="row"><b>${esc(p.full_name)}</b> <small>${esc(p.username)} · ${R[p.role]}</small><br>${own ? `<select onchange="setProfile('${p.id}',{role:this.value})">${Object.keys(R).map(k => `<option value="${k}" ${p.role === k ? 'selected' : ''}>${R[k]}</option>`).join('')}</select>` : ''}${own || p.role === 'engineer' ? `<label><input type="checkbox" style="width:auto" ${p.active ? 'checked' : ''} onchange="setProfile('${p.id}',{active:this.checked})"> مفعّل</label><button class="ghost" onclick="renameUser('${p.id}')">تعديل الاسم</button>` : ''}</div>`).join('')}
 ${own ? '<small>لتعيين مالك احتياطي: غيّر دور المستخدم إلى "مالك".</small>' : ''}
-<h3>آخر التعديلات والحذف</h3>${(al || []).map(a => `<div class="row"><small>${esc(new Date(a.at).toLocaleString('ar-EG'))}<br>${esc(nm[a.actor] || '؟')}: ${a.action==='delete'?'حذف':'تعديل'} في ${esc(a.table_name)} رقم ${esc(a.row_id)}</small></div>`).join('') || '<small>لسه مفيش.</small>'}`, 'villagesView()');
+<button onclick="logsView()">فتح السجل (Logs)</button>`, 'villagesView()');
 }
 async function addVillage() {
   const n = $('#vn').value.trim(); if (!n) return;
@@ -303,13 +303,16 @@ function hubExtra(h) {
   const t = [...EL.filter(e => x[e[0]] != null && x[e[0]] !== '').map(e => r(e[1], fv(x[e[0]], e[2]))), ...Object.entries(x.ports || {}).map(([k, v]) => r(k + ' ports', v)), ...Object.entries(x.lens || {}).map(([k, v]) => r('Pre-connected ' + k + ' m', v))];
   return t.length ? `<table class="kv" dir="ltr">${t.join('')}</table>` : '<small>No details</small>';
 }
+const LENS = [5, 20, 30, 50, 80, 100, 120, 150, 200, 250, 300];
 function hubEdit(id) {
-  const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`;
-  shell('Hub ' + h.code, f('boxes_design', 'Boxes (التصميم)') + f('boxes_done', 'Boxes (المنفذ)') + f('cables_design', 'Cables (التصميم)') + f('cables_done', 'Cables (المنفذ)') + `<label>Feeder</label><select id="hf">${D.f.map(f => `<option value="${f.id}" ${f.id == h.feeder_id ? 'selected' : ''}>${esc(f.code)}</option>`).join('')}</select><button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
+  const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`, L = h.extra?.lens || {};
+  shell('Hub ' + h.code, `<label>Hub code</label><input id="hc" value="${esc(h.code)}">` + f('boxes_design', 'Boxes (design)') + f('boxes_done', 'Boxes (done)') + f('cables_design', 'Cables (design)') + f('cables_done', 'Cables (done)') + `<label>Feeder</label><select id="hf">${D.f.map(x => `<option value="${x.id}" ${x.id == h.feeder_id ? 'selected' : ''}>${esc(x.code)}</option>`).join('')}</select><h3>Installed cables by length (count)</h3><div dir="ltr">${LENS.map(n => `<label class="cb">${n} m<input class="lc" data-n="${n}" type="number" min="0" value="${L[n] ?? ''}"></label>`).join('')}</div><button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
 }
 async function saveHub(id) {
-  const n = k => $('#' + k).value === '' ? null : +$('#' + k).value;
-  const row = { boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done'), feeder_id: +$('#hf').value };
+  const h = D.h.find(x => x.id == id), n = k => $('#' + k).value === '' ? null : +$('#' + k).value, lens = { ...(h.extra?.lens || {}) };
+  document.querySelectorAll('.lc').forEach(i => { if (+i.value > 0) lens[i.dataset.n] = +i.value; else delete lens[i.dataset.n]; });
+  const tot = Object.values(lens).reduce((s, v) => s + (+v || 0), 0);
+  const row = { code: $('#hc').value.trim() || h.code, boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done'), feeder_id: +$('#hf').value, extra: { ...(h.extra || {}), lens, ...(tot ? { total_cables: tot } : {}) } };
   const { data, error } = await sb.from('hubs').update(row).eq('id', id).select();
   if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
   villageView(cur, 'n');
@@ -364,7 +367,7 @@ async function importXlsx(vid, file) {
   alert('تم استيراد ' + n + ' Hub');
   villageView(vid, 'n');
 }
-const nd = (t, id, l) => adm() ? `<button class="ghost sm" onclick="delNet('${t}',${id})">حذف ${l}</button>` : '';
+const nd = (t, id, l) => adm() ? ((t === 'cabinets' || t === 'feeders') ? `<button class="ghost sm" onclick="renameNet('${t}',${id})">تعديل ${l}</button>` : '') + `<button class="ghost sm" onclick="delNet('${t}',${id})">حذف ${l}</button>` : '';
 const fcode = x => 'Feeder ' + ((D.f.find(f => f.id == x.feeder_id) || {}).code || '?');
 async function delNet(t, id) {
   if (!confirm('الحذف هيمسح كل اللي تحته كمان. متأكد؟')) return;
@@ -471,6 +474,70 @@ async function doExport() {
   const base = (V.find(x => x.id == cur).name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'village') + '_' + new Date().toISOString().slice(0, 10);
   if ($('#xf').value === 'xlsx') { const wb = XLSX.utils.book_new(); sheets.forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, mk(a), n)); XLSX.writeFile(wb, base + '.xlsx'); }
   else sheets.forEach(([n, a]) => saveCsv(XLSX.utils.sheet_to_csv(mk(a)), base + '_' + n.replace(/\W+/g, '_') + '.csv'));
+}
+function netForm(kind) {
+  const par = { feeder: 'c', hub: 'f', box: 'h' }[kind];
+  if (par && !D[par].length) return alert('أضف العنصر الأب الأول (Main أو Feeder أو Hub)');
+  const sel = (t, a) => `<label>${t}</label><select id="p">${a.map(x => `<option value="${x.id}">${esc(x.code)}</option>`).join('')}</select>`, inp = (id, t, ty = 'text') => `<label>${t}</label><input id="${id}" type="${ty}">`;
+  const F = { main: inp('c1', 'Main code') + inp('c2', 'Address'), feeder: sel('Main', D.c) + inp('c1', 'Feeder code') + inp('c2', 'Planned length (m)', 'number'), hub: sel('Feeder', D.f) + inp('c1', 'Hub code') + inp('n1', 'Boxes (design)', 'number') + inp('n2', 'Boxes (done)', 'number') + inp('n3', 'Cables (design)', 'number') + inp('n4', 'Cables (done)', 'number'), box: sel('Hub', D.h) + inp('c3', 'Line code (e.g. L1)') + inp('c1', 'Box code') + inp('c2', 'Address') }[kind];
+  shell('Add ' + kind, F + `<button onclick="saveNet('${kind}')">حفظ</button>`, `villageView(${cur},'n')`);
+}
+async function saveNet(kind) {
+  const v = id => ($('#' + id)?.value || '').trim(), num = id => v(id) === '' ? null : +v(id), vid = cur;
+  if (!v('c1')) return alert('الكود مطلوب');
+  let r;
+  if (kind === 'main') r = await sb.from('cabinets').insert({ village_id: vid, code: v('c1'), address: v('c2') || null });
+  else if (kind === 'feeder') r = await sb.from('feeders').insert({ village_id: vid, cabinet_id: +v('p'), code: v('c1'), planned_len: num('c2') });
+  else if (kind === 'hub') r = await sb.from('hubs').insert({ village_id: vid, feeder_id: +v('p'), code: v('c1'), boxes_design: num('n1'), boxes_done: num('n2'), cables_design: num('n3'), cables_done: num('n4') });
+  else {
+    const { data: l, error } = await sb.from('lines').upsert({ village_id: vid, hub_id: +v('p'), code: v('c3') || 'L1' }, { onConflict: 'hub_id,code' }).select().single();
+    if (error) return alert(error.message);
+    r = await sb.from('boxes').insert({ village_id: vid, line_id: l.id, code: v('c1'), address: v('c2') || null });
+  }
+  if (r.error) return alert(msg(r.error.message));
+  villageView(vid, 'n');
+}
+async function boxEdit(id) {
+  const b = D.b.find(x => x.id == id), c = prompt('Box code', b.code); if (!c || !c.trim()) return;
+  const a = prompt('Address', b.address || '');
+  const { data, error } = await sb.from('boxes').update({ code: c.trim(), address: (a || '').trim() || null }).eq('id', id).select();
+  if (error || !data.length) return alert('ماتعدّلش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, 'n');
+}
+async function renameNet(t, id) {
+  const o = D[t === 'cabinets' ? 'c' : 'f'].find(x => x.id == id), c = prompt('New code', o.code); if (!c || !c.trim()) return;
+  const { data, error } = await sb.from(t).update({ code: c.trim() }).eq('id', id).select();
+  if (error || !data.length) return alert('ماتعدّلش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, 'n');
+}
+const TN = { updates: 'Daily update', issues: 'Issue', hubs: 'Hub', boxes: 'Box', cabinets: 'Main', feeders: 'Feeder', lines: 'Line', villages: 'Village', contractors: 'Contractor', stock_moves: 'Warehouse move', stock_items: 'Warehouse config', profiles: 'User' };
+const AC = { insert: ['Added', '#2e7d32'], update: ['Edited', '#b7791f'], delete: ['Deleted', '#c2410c'] };
+const LG = { act: '', tb: '', n: 60, sel: new Set() };
+async function logsView() {
+  let q = sb.from('audit_log').select('*').order('id', { ascending: false }).limit(LG.n);
+  if (LG.act) q = q.eq('action', LG.act);
+  if (LG.tb) q = q.eq('table_name', LG.tb);
+  const [{ data }, { data: ps }] = await Promise.all([q, sb.from('profiles').select('id,full_name')]);
+  const rows = data || [], nm = Object.fromEntries((ps || []).map(p => [p.id, p.full_name])), fmt = v => v == null ? '—' : esc(String(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, 40)), own = me.role === 'owner';
+  const chip = (k, v, t) => `<button class="${LG[k] === v ? '' : 'ghost'} sm" onclick="LG.${k}='${v}';logsView()">${t}</button>`;
+  let last = '';
+  const list = rows.map(a => {
+    const d = new Date(a.at), day = d.toLocaleDateString('en-GB'), o = a.old_data || {}, w = a.new_data || {}, x = a.new_data || a.old_data || {}, ac = AC[a.action] || [a.action, '#888'];
+    const title = x.code || x.name || x.title || x.item || (x.work_done || '').slice(0, 50) || x.full_name || '#' + a.row_id;
+    const diff = a.action === 'update' ? Object.keys(w).filter(k => !['created_at', 'stage_at', 'at'].includes(k) && JSON.stringify(w[k]) !== JSON.stringify(o[k])).slice(0, 6).map(k => k === 'extra' ? 'extra data changed' : `${k}: ${fmt(o[k])} → ${fmt(w[k])}`).join('<br>') : '';
+    const head = day !== last ? `<h3 dir="ltr">${day}</h3>` : ''; last = day;
+    return `${head}<div class="row" dir="ltr" style="border-inline-start-color:${ac[1]}"><label class="cb">${own ? `<input type="checkbox" class="lk" data-id="${a.id}" style="width:auto" ${LG.sel.has(a.id) ? 'checked' : ''} onchange="logPick(${a.id},this.checked)"> ` : ''}<b style="color:${ac[1]}">${ac[0]}</b> · ${esc(TN[a.table_name] || a.table_name)}: ${esc(title)}</label><small>${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${esc(nm[a.actor] || 'System')}</small>${diff ? `<div class="hub">${diff}</div>` : ''}</div>`;
+  }).join('');
+  shell('Logs', `<div dir="ltr">${chip('act', '', 'All')}${chip('act', 'insert', 'Added')}${chip('act', 'update', 'Edited')}${chip('act', 'delete', 'Deleted')}<select onchange="LG.tb=this.value;logsView()"><option value="">All tables</option>${Object.keys(TN).map(k => `<option value="${k}" ${LG.tb === k ? 'selected' : ''}>${TN[k]}</option>`).join('')}</select></div>${own ? `<button class="ghost sm" onclick="logSelAll()">Select all</button><button class="sm" style="background:var(--warn)" id="ld" onclick="logDel()">Delete selected (${LG.sel.size})</button>` : ''}${list || '<p>No entries.</p>'}${rows.length >= LG.n ? '<button class="ghost" onclick="LG.n+=60;logsView()">Load more</button>' : ''}`, 'adminView()');
+}
+function logPick(id, on) { on ? LG.sel.add(id) : LG.sel.delete(id); const b = $('#ld'); if (b) b.textContent = `Delete selected (${LG.sel.size})`; }
+function logSelAll() { document.querySelectorAll('.lk').forEach(c => { c.checked = true; LG.sel.add(+c.dataset.id); }); logPick(0, false); LG.sel.delete(0); $('#ld').textContent = `Delete selected (${LG.sel.size})`; }
+async function logDel() {
+  if (!LG.sel.size) return alert('اختار سجلات الأول');
+  if (!confirm('هتحذف ' + LG.sel.size + ' سجل نهائياً. الحذف ده مش بيتسجل. متأكد؟')) return;
+  const { data, error } = await sb.from('audit_log').delete().in('id', [...LG.sel]).select();
+  if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية (للمالك بس)'));
+  LG.sel.clear(); logsView();
 }
 boot();
 </script>
