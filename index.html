@@ -39,6 +39,8 @@ footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 .mi{display:block;width:100%;text-align:start;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:14px 4px;font-weight:400}
 .g{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.g .hub{margin:0}
 .tabs button{font-size:14px}
+table.kv{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.kv td{padding:3px 6px;border-bottom:1px solid var(--line)}.kv td:last-child{text-align:right;font-weight:600}
+.cb{display:block;font-weight:400}
 </style>
 </head>
 <body>
@@ -124,7 +126,7 @@ function summaryTab() {
   const S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), bd = S('boxes_design'), bn = S('boxes_done'), cd = S('cables_design'), cn = S('cables_done');
   const hubPct = bd ? hp(bn, bd) : null, warnL = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)), warn = warnL.length;
   const hubLine = bd ? `<div class="hub">Boxes: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">Cables: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم المنفذ أكبر من المصمم (غالباً غلطة إدخال أو Cable زيادة):${warnL.map(x => `<br>• ${esc(fcode(x))} / Hub ${esc(x.code)}: ` + [ov(x.boxes_done, x.boxes_design) ? `Boxes ${x.boxes_done} من ${x.boxes_design}` : '', ov(x.cables_done, x.cables_design) ? `Cables ${x.cables_done} من ${x.cables_design}` : ''].filter(Boolean).join('، ')).join('')}</div>` : ''}` : '';
-  return `<b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}
+  return `<button class="ghost" onclick="exportView()">Export / تصدير</button><br><b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}${feederChart()}
 ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).map(x => `<div class="hub">${x[0]}: ${x[1]}</div>`).join('')}
 <h3>آخر تحديث</h3>${last ? `${esc(last.work_date)} – ${esc(last.contractors?.name || 'بدون مقاول')}<br>${esc(last.work_done)}<br><small>سجّله ${esc(D.nm[last.created_by] || '؟')}</small>` : '<p>مفيش تحديثات.</p>'}
 <h3>المشاكل المفتوحة (${open.length})</h3>${open.map(x => `<div class="row open">${esc(x.title)}</div>`).join('') || '<p>مفيش.</p>'}`;
@@ -293,13 +295,13 @@ async function changePw() {
 }
 const hp = (a, b) => b ? Math.round(a / b * 100) : 0;
 const ov = (a, b) => a != null && b != null && a > b;
-const hubStat = h => `Boxes ${h.boxes_done ?? '—'}/${h.boxes_design ?? '—'}${ov(h.boxes_done, h.boxes_design) ? ' ⚠' : ''} · Cables ${h.cables_done ?? '—'}/${h.cables_design ?? '—'}${ov(h.cables_done, h.cables_design) ? ' ⚠' : ''}`;
-const EL = { co: 'المقاول', sbc: 'SBC', new_code: 'الكود الجديد', holder: 'Holder', hdpe: 'HDPE م', adss96: 'ADSS 96F م', adss48: 'ADSS 48F م', hook: 'Hook', tension: 'Tension clamp', joint: 'Joint', olt: 'OLT', hubspl: 'Hub spliced', pretest: 'Pretest', pat: 'PAT', total_cables: 'إجمالي Cables', not_box: 'NOT BOX', not_cable: 'NOT CABLE', flat: 'flat' };
-const fv = v => v === true ? 'تم' : v === false ? 'لا' : v;
+const hubStat = h => `<span dir="ltr">Boxes ${h.boxes_done ?? '—'}/${h.boxes_design ?? '—'}${h.boxes_design ? ' (' + hp(h.boxes_done, h.boxes_design) + '%)' : ''}${ov(h.boxes_done, h.boxes_design) ? ' ⚠' : ''} · Cables ${h.cables_done ?? '—'}/${h.cables_design ?? '—'}${h.cables_design ? ' (' + hp(h.cables_done, h.cables_design) + '%)' : ''}${ov(h.cables_done, h.cables_design) ? ' ⚠' : ''}</span>`;
+const EL = [['co', 'Co'], ['sbc', 'SBC'], ['new_code', 'New Hub'], ['holder', 'Holder'], ['hdpe', 'HDPE 32 (m)'], ['adss96', 'ADSS 96F (m)'], ['adss48', 'ADSS 48F (m)'], ['hook', 'Hooks'], ['tension', 'Tension clamps'], ['joint', 'Joint spliced (manhole)', 1], ['olt', 'OLT spliced', 1], ['hubspl', 'Hub spliced', 1], ['pretest', 'Pretest', 2], ['pat', 'PAT', 2], ['total_cables', 'Total cables'], ['not_box', 'NOT BOX'], ['not_cable', 'NOT CABLE'], ['flat', 'Flat']];
+const fv = (v, k) => k === 1 ? (v ? 'Yes' : 'No') : k === 2 ? (v ? 'Done' : 'Not done') : v;
 function hubExtra(h) {
-  const x = h.extra || {}, a = Object.keys(EL).filter(k => x[k] != null && x[k] !== '').map(k => `${EL[k]}: ${esc(fv(x[k]))}`);
-  const o = (t, m, u) => m && Object.keys(m).length ? `${t}: ` + Object.entries(m).map(([k, v]) => `${k}${u}=${esc(v)}`).join('، ') : '';
-  return [...a, o('Ports', x.ports, ''), o('Cables', x.lens, 'م')].filter(Boolean).join('<br>') || '<small>مفيش تفاصيل</small>';
+  const x = h.extra || {}, r = (a, b) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`;
+  const t = [...EL.filter(e => x[e[0]] != null && x[e[0]] !== '').map(e => r(e[1], fv(x[e[0]], e[2]))), ...Object.entries(x.ports || {}).map(([k, v]) => r(k + ' ports', v)), ...Object.entries(x.lens || {}).map(([k, v]) => r('Pre-connected ' + k + ' m', v))];
+  return t.length ? `<table class="kv" dir="ltr">${t.join('')}</table>` : '<small>No details</small>';
 }
 function hubEdit(id) {
   const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`;
@@ -383,7 +385,7 @@ async function dashView() {
   const L = (data || []).map(v => ({ ...v, bp: hp(v.boxes_done, v.boxes_design), cp: hp(v.cables_done, v.cables_design), d: v.last_update ? Math.floor((Date.now() - new Date(v.last_update)) / 864e5) : null }));
   L.sort((a, b) => (a.boxes_design ? a.bp : 999) - (b.boxes_design ? b.bp : 999));
   const T = k => L.reduce((s, v) => s + (+v[k] || 0), 0), stale = v => v.d === null || v.d >= 3, card = (n, t) => `<div class="hub"><b>${n}</b> ${t}</div>`;
-  shell('لوحة المتابعة', `<div class="g">${card(L.length, 'قرية')}${card(T('hubs'), 'Hub')}${card(hp(T('boxes_done'), T('boxes_design')) + '%', `Boxes ${T('boxes_done')}/${T('boxes_design')}`)}${card(hp(T('cables_done'), T('cables_design')) + '%', `Cables ${T('cables_done')}/${T('cables_design')}`)}${card(T('open_issues'), 'مشكلة مفتوحة')}${card(L.filter(stale).length, 'قرية راكدة')}${card(T('warns'), 'Hub للمراجعة ⚠')}</div><small>الراكدة: مفيش تحديث من 3 أيام أو أكتر. الترتيب: الأقل إنجازاً أولاً.</small><h3>القرى</h3>` + L.map(v => `<div class="row tap ${stale(v) ? 'open' : ''}" onclick="gotoV(${v.id},'s')"><b>${esc(v.name)}</b> ${v.d === null ? '<small>· مفيش تحديثات</small>' : v.d >= 3 ? `<small>· راكدة ${v.d} يوم</small>` : ''}<div class="bar"><i style="width:${Math.min(100, v.bp)}%"></i></div><small>Boxes ${v.bp}% · Cables ${v.cp}% · ${v.hubs} Hub · ${v.open_issues} مشكلة${v.warns ? ' · ⚠ ' + v.warns : ''}</small></div>`).join(''), 'villagesView()');
+  shell('لوحة المتابعة', `<div class="g">${card(L.length, 'قرية')}${card(T('hubs'), 'Hub')}${card(hp(T('boxes_done'), T('boxes_design')) + '%', `Boxes ${T('boxes_done')}/${T('boxes_design')}`)}${card(hp(T('cables_done'), T('cables_design')) + '%', `Cables ${T('cables_done')}/${T('cables_design')}`)}${card(T('open_issues'), 'مشكلة مفتوحة')}${card(L.filter(stale).length, 'قرية راكدة')}${card(T('warns'), 'Hub للمراجعة ⚠')}</div><small>الراكدة: مفيش تحديث من 3 أيام أو أكتر. الترتيب: الأقل إنجازاً أولاً.</small><h3>القرى</h3>` + L.map(v => `<div class="row tap ${stale(v) ? 'open' : ''}" onclick="gotoV(${v.id},'s')"><b>${esc(v.name)}</b> ${v.d === null ? '<small>· مفيش تحديثات</small>' : v.d >= 3 ? `<small>· راكدة ${v.d} يوم</small>` : ''}${dbar('Boxes', v.bp, 'var(--acc)')}${dbar('Cables', v.cp, '#6B8E9B')}<small>${v.hubs} Hubs · ${v.open_issues} مشكلة${v.warns ? ' · ⚠ ' + v.warns : ''}</small></div>`).join(''), 'villagesView()');
 }
 const ITEMS = ['Box', 'Hub', ...[20, 30, 50, 80, 100, 120, 150, 200, 250, 300].map(n => `Cable ${n}m`)];
 async function loadStock(id) {
@@ -414,6 +416,61 @@ async function saveCfg() {
   const { error } = await sb.from('stock_items').upsert(rows, { onConflict: 'village_id,item' });
   if (error) return alert(error.message);
   villageView(cur, 'w');
+}
+const dbar = (l, p, c) => `<small dir="ltr">${l} ${p}%</small><div class="bar"><i style="width:${Math.min(100, p)}%;background:${c}"></i></div>`;
+const nat = (a, b) => { const u = x => x === 'UNASSIGNED' ? 1 : 0; return u(a) - u(b) || String(a ?? '').localeCompare(String(b ?? ''), 'en', { numeric: true }); };
+function feederChart() {
+  const g = {};
+  D.h.forEach(x => { const c = fdr(x).code || '?', o = g[c] || (g[c] = { n: 0, bd: 0, bn: 0, cd: 0, cn: 0 }); o.n++; o.bd += +x.boxes_design || 0; o.bn += +x.boxes_done || 0; o.cd += +x.cables_design || 0; o.cn += +x.cables_done || 0; });
+  const ks = Object.keys(g).sort(nat);
+  return ks.length ? '<h3>Progress by Feeder</h3>' + ks.map(k => { const o = g[k]; return `<div class="row"><b dir="ltr">${esc(k)}</b> <small>${o.n} Hubs</small>${dbar('Boxes', hp(o.bn, o.bd), 'var(--acc)')}${dbar('Cables', hp(o.cn, o.cd), '#6B8E9B')}</div>`; }).join('') : '';
+}
+const fdr = h => D.f.find(f => f.id == h.feeder_id) || {}, cab = h => D.c.find(c => c.id == fdr(h).cabinet_id) || {};
+const X = k => h => h.extra?.[k];
+const ratio = (a, b) => b && a != null ? a / b : '';
+const YN = v => v === true ? 'Yes' : v === false ? 'No' : '', DN = v => v === true ? 'Done' : v === false ? 'Not' : '';
+const COLS = [['Basic', 'Co', X('co')], ['Basic', 'SBC', X('sbc')], ['Basic', 'Number', h => cab(h).code], ['Basic', 'Feeder', h => fdr(h).code], ['Basic', 'HUB', h => h.code], ['Basic', 'NEW HUB', X('new_code')],
+['Progress', 'SUB Qty in design', h => h.boxes_design], ['Progress', 'SUB completed', h => h.boxes_done], ['Progress', 'Cables Qty in design', h => h.cables_design], ['Progress', 'Cable finished', h => h.cables_done], ['Progress', 'Box Completion ratio', h => ratio(h.boxes_done, h.boxes_design)], ['Progress', 'Cable Completion ratio', h => ratio(h.cables_done, h.cables_design)],
+['Materials', 'Holder', X('holder')], ['Materials', 'HDPE 32 / M', X('hdpe')], ['Materials', 'ADSS 96F length / M', X('adss96')], ['Materials', 'ADSS 48F length / M', X('adss48')], ['Materials', 'No. of Hook', X('hook')], ['Materials', 'No. of Tension clamp', X('tension')],
+['Tests and Splicing', 'Joint spliced in manhole yes/no', h => YN(h.extra?.joint)], ['Tests and Splicing', 'OLT spliced yes/no', h => YN(h.extra?.olt)], ['Tests and Splicing', 'Hub spliced yes/no', h => YN(h.extra?.hubspl)], ['Tests and Splicing', 'Pretest done or not', h => DN(h.extra?.pretest)], ['Tests and Splicing', 'PAT done or not', h => DN(h.extra?.pat)],
+['Remarks', 'Total cables', X('total_cables')], ['Remarks', 'NOT BOX', X('not_box')], ['Remarks', 'NOT CABLE', X('not_cable')], ['Remarks', 'Flat', X('flat')]];
+const KEEP = ['Feeder', 'HUB'], SUMG = ['Progress', 'Materials', 'Ports', 'Pre-connected cables'];
+function exportCols() {
+  const pk = new Set(), lk = new Set();
+  D.h.forEach(h => { Object.keys(h.extra?.ports || {}).forEach(k => pk.add(k)); Object.keys(h.extra?.lens || {}).forEach(k => lk.add(k)); });
+  const s = a => [...a].sort((x, y) => x - y);
+  return [...COLS, ...s(pk).map(k => ['Ports', `No. of ${k} ports FebS`, h => h.extra?.ports?.[k]]), ...s(lk).map(k => ['Pre-connected cables', `No. of pre connected-${k}m`, h => h.extra?.lens?.[k]])];
+}
+function exportView() {
+  const cols = exportCols(), groups = [...new Set(cols.map(c => c[0]))], today = new Date().toISOString().slice(0, 10);
+  shell('Export', `<h3>Hubs sheet</h3><label class="cb"><input type="checkbox" id="xh" checked style="width:auto"> Include Hubs sheet (same layout as the progress sheet, with TOTAL row)</label>` + groups.map(g => `<div class="row" dir="ltr"><b>${g}</b> <button class="ghost sm" onclick="xset('${g}',1)">All</button><button class="ghost sm" onclick="xset('${g}',0)">None</button>${cols.map((c, i) => c[0] === g ? `<label class="cb"><input type="checkbox" class="xc" data-g="${g}" value="${i}" style="width:auto" checked ${KEEP.includes(c[1]) ? 'disabled' : ''}> ${c[1]}</label>` : '').join('')}</div>`).join('') + `<h3>Other sheets</h3><div dir="ltr"><label class="cb"><input type="checkbox" id="xu" style="width:auto"> Daily updates</label><input id="xa" type="date" placeholder="From"><input id="xb" type="date" placeholder="To" value="${today}"><label class="cb"><input type="checkbox" id="xi" style="width:auto"> Issues</label><label class="cb"><input type="checkbox" id="xw" style="width:auto"> Warehouse (balances + moves)</label><label>Format</label><select id="xf"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (one file per sheet)</option></select></div><button onclick="doExport()">Download</button>`, `villageView(${cur},'s')`);
+}
+function xset(g, on) { document.querySelectorAll(`.xc[data-g="${g}"]`).forEach(c => { if (!c.disabled) c.checked = !!on; }); }
+function hubSheet(pick) {
+  const sel = new Set(pick.map(c => c[1])), cc = exportCols().filter(c => KEEP.includes(c[1]) || sel.has(c[1]));
+  const rows = [...D.h].sort((a, b) => nat(cab(a).code, cab(b).code) || nat(fdr(a).code, fdr(b).code) || nat(a.code, b.code));
+  const S = k => rows.reduce((s, x) => s + (+x[k] || 0), 0), lab = cc.findIndex(c => !KEEP.includes(c[1]));
+  const tot = cc.map(c => { const k = c[1]; if (k === 'Feeder') return new Set(rows.map(x => fdr(x).code)).size; if (k === 'HUB') return rows.length; if (/ratio/.test(k)) return k.startsWith('Box') ? ratio(S('boxes_done'), S('boxes_design')) : ratio(S('cables_done'), S('cables_design')); if ((SUMG.includes(c[0]) || k === 'Total cables')) return rows.reduce((s, x) => s + (+c[2](x) || 0), 0); return ''; });
+  if (lab >= 0 && !SUMG.includes(cc[lab][0])) tot[lab] = 'TOTAL';
+  return [cc.map(c => c[1]), ...rows.map(x => cc.map(c => c[2](x) ?? '')), tot];
+}
+const mk = a => { const ws = XLSX.utils.aoa_to_sheet(a); ws['!cols'] = a[0].map((_, i) => ({ wch: Math.min(40, Math.max(8, ...a.map(r => String(r[i] ?? '').length))) })); a[0].forEach((t, c) => { if (/ratio/.test(t)) a.forEach((r, i) => { const x = ws[XLSX.utils.encode_cell({ r: i, c })]; if (i && x && x.t === 'n') x.z = '0.00%'; }); }); return ws; };
+function saveCsv(t, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + t], { type: 'text/csv;charset=utf-8' })); a.download = name; a.click(); }
+async function stockSheets() {
+  const [{ data: it }, { data: m }] = await Promise.all([sb.from('stock_items').select('*').eq('village_id', cur), sb.from('stock_moves').select('*').eq('village_id', cur).order('move_date').limit(1000)]);
+  const cf = Object.fromEntries((it || []).map(x => [x.item, x])), S = k => (m || []).filter(x => x.kind === k).reduce((o, x) => (o[x.item] = (o[x.item] || 0) + +x.qty, o), {}), I = S('in'), O = S('out');
+  return [['Warehouse', [['Item', 'In', 'Out', 'Balance', 'Required', 'Min qty', 'Shortage'], ...ITEMS.map(k => { const bl = (I[k] || 0) - (O[k] || 0), rq = +(cf[k]?.required || 0); return [k, I[k] || 0, O[k] || 0, bl, rq, +(cf[k]?.min_qty || 0), Math.max(0, rq - bl)]; })]], ['Stock moves', [['Date', 'Type', 'Item', 'Qty', 'Note', 'Recorded by'], ...(m || []).map(x => [x.move_date, x.kind === 'in' ? 'In' : 'Out', x.item, x.qty, x.note || '', D.nm[x.created_by] || ''])]]];
+}
+async function doExport() {
+  const cols = exportCols(), pick = [...document.querySelectorAll('.xc')].filter(c => c.checked || c.disabled).map(c => cols[+c.value]), sheets = [];
+  if ($('#xh').checked) sheets.push(['Hubs', hubSheet(pick)]);
+  if ($('#xu').checked) { const a = $('#xa').value, b = $('#xb').value; sheets.push(['Daily updates', [['Date', 'Contractor', 'Work done', 'Hubs', 'Attendance', 'Notes', 'Recorded by'], ...D.u.filter(u => (!a || u.work_date >= a) && (!b || u.work_date <= b)).sort((p, q) => p.work_date.localeCompare(q.work_date)).map(u => [u.work_date, u.contractors?.name || '', u.work_done, (u.hub_codes || []).join(', '), u.attendance || '', u.notes || '', D.nm[u.created_by] || ''])]]); }
+  if ($('#xi').checked) sheets.push(['Issues', [['Title', 'Details', 'Status', 'Recorded by', 'Date'], ...D.i.map(i => [i.title, i.details || '', i.status === 'open' ? 'Open' : 'Resolved', D.nm[i.created_by] || '', String(i.created_at).slice(0, 10)])]]);
+  if ($('#xw').checked) sheets.push(...await stockSheets());
+  if (!sheets.length) return alert('Select at least one sheet');
+  const base = (V.find(x => x.id == cur).name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'village') + '_' + new Date().toISOString().slice(0, 10);
+  if ($('#xf').value === 'xlsx') { const wb = XLSX.utils.book_new(); sheets.forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, mk(a), n)); XLSX.writeFile(wb, base + '.xlsx'); }
+  else sheets.forEach(([n, a]) => saveCsv(XLSX.utils.sheet_to_csv(mk(a)), base + '_' + n.replace(/\W+/g, '_') + '.csv'));
 }
 boot();
 </script>
