@@ -129,7 +129,7 @@ function summaryTab() {
   const S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), bd = S('boxes_design'), bn = S('boxes_done'), cd = S('cables_design'), cn = S('cables_done');
   const hubPct = bd ? hp(bn, bd) : null, warnL = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)), warn = warnL.length;
   const hubLine = bd ? `<div class="hub">Boxes: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">Cables: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم المنفذ أكبر من المصمم (غالباً غلطة إدخال أو Cable زيادة):${warnL.map(x => `<br>• ${esc(fcode(x))} / Hub ${esc(x.code)}: ` + [ov(x.boxes_done, x.boxes_design) ? `Boxes ${x.boxes_done} من ${x.boxes_design}` : '', ov(x.cables_done, x.cables_design) ? `Cables ${x.cables_done} من ${x.cables_design}` : ''].filter(Boolean).join('، ')).join('')}</div>` : ''}` : '';
-  return `<button class="ghost" onclick="exportView()">Export / تصدير</button><button class="ghost" onclick="shareWA()">WhatsApp</button><br><b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}${feederChart()}
+  return `<button class="ghost" onclick="exportView()">Export / تصدير</button><button class="ghost" onclick="shareWA()">WhatsApp</button><button class="ghost" onclick="pasteView()">Paste Update</button><br><b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}${feederChart()}
 ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).map(x => `<div class="hub">${x[0]}: ${x[1]}</div>`).join('')}
 <h3>آخر تحديث</h3>${last ? `${esc(last.work_date)} – ${esc(last.contractors?.name || 'بدون مقاول')}<br>${esc(last.work_done)}<br><small>سجّله ${esc(D.nm[last.created_by] || '؟')}</small>` : '<p>مفيش تحديثات.</p>'}
 <h3>المشاكل المفتوحة (${open.length})</h3>${open.map(x => `<div class="row open">${esc(x.title)}</div>`).join('') || '<p>مفيش.</p>'}`;
@@ -611,6 +611,66 @@ async function delFile(id) {
   const { error } = await sb.storage.from('files').remove([x.path]); if (error) return alert(error.message);
   const { error: e2 } = await sb.from('attachments').delete().eq('id', id); if (e2) return alert(e2.message);
   villageView(cur, 'f');
+}
+const PK = ['boxes_design', 'boxes_done', 'cables_design', 'cables_done'], norm = s => String(s ?? '').toLowerCase().replace(/\s/g, '');
+let PP = null, PC = null;
+function hubRef(ref) {
+  const [a, b] = ref.includes('/') ? ref.split('/') : [null, ref], c = b.trim().toLowerCase();
+  const m = D.h.filter(x => x.code.toLowerCase() === c && (!a || (fdr(x).code || '').toLowerCase() === a.trim().toLowerCase()));
+  return m.length === 1 ? m[0] : m.length ? 'ambiguous' : null;
+}
+function parsePaste(t) {
+  const R = { u: {}, hubs: [], cab: [], stock: [], err: [] }, num = v => (v === '' || isNaN(+v)) ? null : +v;
+  t.split(/\r?\n/).forEach((ln, i) => {
+    ln = ln.trim(); if (!ln) return;
+    const m = ln.match(/^([A-Za-z]+)(?:\s+([^:]+?))?\s*:\s*(.*)$/), E = s => R.err.push(`Line ${i + 1}: ${s}`);
+    if (!m) return E(`can't read "${ln.slice(0, 40)}"`);
+    const k = m[1].toUpperCase(), ref = m[2], v = m[3].trim();
+    if (k === 'DATE') R.u.date = v; else if (k === 'CONTRACTOR') R.u.contractor = v; else if (k === 'WORK') R.u.work = v;
+    else if (k === 'HUBS') R.u.hubs = v.split(/[,،]/).map(x => x.trim()).filter(Boolean); else if (k === 'ATTENDANCE') R.u.att = v; else if (k === 'NOTES') R.u.notes = v;
+    else if (k === 'HUB' || k === 'CABLES') {
+      const hb = ref ? hubRef(ref) : null;
+      if (!hb || hb === 'ambiguous') return E(!ref ? 'missing hub name' : hb ? `hub "${ref}" is in more than one feeder, write it like F2/${ref}` : `hub "${ref}" not found`);
+      const ch = [];
+      v.split(/[,،]/).forEach(p => { p = p.trim(); if (!p) return; const q = p.match(/^(\w+)\s*(\+=|=)\s*(-?\d+(?:\.\d+)?)$/); if (!q) return E(`bad part "${p}"`); if (k === 'HUB' ? !PK.includes(q[1].toLowerCase()) : !/^\d+$/.test(q[1])) return E(`"${q[1]}" is not a valid ${k === 'HUB' ? 'number name' : 'cable length'}`); ch.push({ key: q[1].toLowerCase(), add: q[2] === '+=', val: +q[3] }); });
+      (k === 'HUB' ? R.hubs : R.cab).push({ h: hb, ch });
+    } else if (k === 'STOCK') {
+      const w = v.split(/\s+/), kind = (w[0] || '').toLowerCase();
+      let it = ITEMS.find(x => norm(x) === norm((w[1] || '') + (w[2] || ''))), s = 3;
+      if (!it) { it = ITEMS.find(x => norm(x) === norm(w[1])); s = 2; }
+      const q = num(w[s]);
+      if (!['in', 'out'].includes(kind) || !it || !(q > 0)) E('STOCK must be: IN|OUT <item> <qty> [note]'); else R.stock.push({ kind, item: it, qty: q, note: w.slice(s + 1).join(' ') || null });
+    } else E(`unknown key ${k}`);
+  });
+  return R;
+}
+function pasteView() {
+  PP = null;
+  shell('Paste Update', `<textarea id="pt" dir="ltr" style="min-height:220px" placeholder="Paste the update here"></textarea><button onclick="pastePreview()">Preview</button><div id="pv"></div><details><summary>الصيغة</summary><pre dir="ltr" style="white-space:pre-wrap;font-size:13px">DATE: 2026-10-28\nCONTRACTOR: Omar Elnahrawy\nWORK: Pulled cables on H7, finished 3 boxes\nHUBS: H7, H8\nATTENDANCE: Eng Ahmed, Omar\nNOTES: pole 12 needs replacement\nHUB F2/H7: boxes_done+=3, cables_done=36\nCABLES F2/H7: 80+=2, 100=1\nSTOCK: OUT Cable 80m 2 used on H7\nSTOCK: IN Box 20 delivery\n\n= set the value, += add to it. F2/ is needed only when the same hub name exists in more than one feeder.</pre></details>`, `villageView(${cur},'s')`);
+}
+async function pastePreview() {
+  if (!PC) PC = (await sb.from('contractors').select('*')).data || [];
+  const R = parsePaste($('#pt').value), date = R.u.date || new Date().toISOString().slice(0, 10), out = [], hubUp = [], cabUp = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) R.err.push('DATE must be YYYY-MM-DD');
+  const ct = R.u.contractor ? PC.find(x => norm(x.name) === norm(R.u.contractor)) || PC.find(x => norm(x.name).includes(norm(R.u.contractor))) : null;
+  if (R.u.contractor && !ct) out.push(`⚠ Contractor "${esc(R.u.contractor)}" not found, will be saved without contractor`);
+  if (R.u.work) out.push(`<b>Daily update</b> ${esc(date)}${ct ? ' · ' + esc(ct.name) : ''}<br>${esc(R.u.work)}${R.u.hubs ? '<br><small>Hubs: ' + esc(R.u.hubs.join(', ')) + '</small>' : ''}`);
+  else if (R.u.hubs || R.u.att || R.u.notes) R.err.push('WORK is required to save a daily update');
+  const grp = L => { const g = {}; L.forEach(x => (g[x.h.id] = g[x.h.id] || { h: x.h, ch: [] }).ch.push(...x.ch)); return Object.values(g); };
+  grp(R.hubs).forEach(({ h, ch }) => { const row = {}, d = []; ch.forEach(q => { const old = row[q.key] ?? h[q.key] ?? 0, nv = q.add ? old + q.val : q.val; row[q.key] = nv; d.push(`${q.key}: ${h[q.key] ?? '—'} → ${nv}`); }); hubUp.push({ id: h.id, row }); out.push(`<b>${esc(fdr(h).code)}/${esc(h.code)}</b><br>${d.join('<br>')}`); });
+  grp(R.cab).forEach(({ h, ch }) => { const lens = { ...(h.extra?.lens || {}) }, d = []; ch.forEach(q => { const old = +lens[q.key] || 0, nv = q.add ? old + q.val : q.val; if (nv > 0) lens[q.key] = nv; else delete lens[q.key]; d.push(`${q.key} m: ${old} → ${nv}`); }); cabUp.push({ id: h.id, row: { extra: { ...(h.extra || {}), lens, total_cables: Object.values(lens).reduce((s, v) => s + (+v || 0), 0) } } }); out.push(`<b>Cables ${esc(fdr(h).code)}/${esc(h.code)}</b><br>${d.join('<br>')}`); });
+  R.stock.forEach(s => out.push(`<b>Warehouse</b> ${s.kind === 'in' ? 'IN' : 'OUT'} ${s.qty} × ${esc(s.item)}${s.note ? ' · ' + esc(s.note) : ''}`));
+  PP = { R, date, ct, hubUp, cabUp };
+  $('#pv').innerHTML = (R.err.length ? `<div class="row open">${R.err.map(esc).join('<br>')}</div>` : '') + out.map(x => `<div class="row">${x}</div>`).join('') + (!R.err.length && out.length ? '<button onclick="pasteApply()">Apply</button>' : out.length || R.err.length ? '' : '<p>Nothing to apply.</p>');
+}
+async function pasteApply() {
+  const { R, date, ct, hubUp, cabUp } = PP, jobs = [];
+  if (R.u.work) jobs.push(sb.from('updates').insert({ village_id: cur, work_date: date, contractor_id: ct ? ct.id : null, work_done: R.u.work, hub_codes: R.u.hubs || [], attendance: R.u.att || null, notes: R.u.notes || null }).select());
+  [...hubUp, ...cabUp].forEach(x => jobs.push(sb.from('hubs').update(x.row).eq('id', x.id).select()));
+  if (R.stock.length) jobs.push(sb.from('stock_moves').insert(R.stock.map(s => ({ village_id: cur, kind: s.kind, item: s.item, qty: s.qty, move_date: date, note: s.note }))).select());
+  const res = await Promise.all(jobs), bad = res.filter(r => r.error || !r.data.length);
+  alert(bad.length ? `${res.length - bad.length} من ${res.length} اتنفذوا. الفاشل: ${bad.map(r => r.error ? r.error.message : 'مفيش صلاحية').join(' | ')}` : 'تم التطبيق ✓');
+  villageView(cur, 's');
 }
 boot();
 </script>
