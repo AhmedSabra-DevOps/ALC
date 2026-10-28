@@ -38,6 +38,7 @@ footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 .o #drw{transform:none}.o #ov{display:block}
 .mi{display:block;width:100%;text-align:start;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:14px 4px;font-weight:400}
 .g{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.g .hub{margin:0}
+.tabs button{font-size:14px}
 </style>
 </head>
 <body>
@@ -112,8 +113,9 @@ async function villageView(id, tab = 's') {
     sb.from('profiles').select('id,full_name'),
     ...['cabinets', 'feeders', 'hubs', 'lines', 'boxes'].map(t => sb.from(t).select('*').eq('village_id', id).order('code'))]);
   D = { u: u.data || [], i: i.data || [], c: n[0].data || [], f: n[1].data || [], h: n[2].data || [], l: n[3].data || [], b: n[4].data || [], nm: Object.fromEntries((p.data || []).map(x => [x.id, x.full_name])) };
-  const T = { s: summaryTab, n: networkTab, u: updatesTab, i: issuesTab }[tab]();
-  const tabs = [['s', 'الملخص'], ['n', 'الشبكة'], ['u', 'التحديثات'], ['i', 'المشاكل']];
+  if (tab === 'w') D.w = await loadStock(id);
+  const T = { s: summaryTab, n: networkTab, u: updatesTab, i: issuesTab, w: warehouseTab }[tab]();
+  const tabs = [['s', 'الملخص'], ['n', 'الشبكة'], ['u', 'التحديثات'], ['i', 'المشاكل'], ['w', 'المخزن']];
   shell(v.name, `<div class="tabs">${tabs.map(t => `<button class="${tab === t[0] ? 'on' : ''}" onclick="villageView(${id},'${t[0]}')">${t[1]}</button>`).join('')}</div>${T}`, 'villagesView()');
 }
 
@@ -218,7 +220,7 @@ async function delRow(t, id) {
   if (!confirm('متأكد من الحذف؟')) return;
   const { data, error } = await sb.from(t).delete().eq('id', id).select();
   if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية'));
-  villageView(cur, t === 'updates' ? 'u' : 'i');
+  villageView(cur, t === 'updates' ? 'u' : t === 'stock_moves' ? 'w' : 'i');
 }
 
 // ---------- الإدارة ----------
@@ -301,11 +303,11 @@ function hubExtra(h) {
 }
 function hubEdit(id) {
   const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`;
-  shell('Hub ' + h.code, f('boxes_design', 'Boxes (التصميم)') + f('boxes_done', 'Boxes (المنفذ)') + f('cables_design', 'Cables (التصميم)') + f('cables_done', 'Cables (المنفذ)') + `<button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
+  shell('Hub ' + h.code, f('boxes_design', 'Boxes (التصميم)') + f('boxes_done', 'Boxes (المنفذ)') + f('cables_design', 'Cables (التصميم)') + f('cables_done', 'Cables (المنفذ)') + `<label>Feeder</label><select id="hf">${D.f.map(f => `<option value="${f.id}" ${f.id == h.feeder_id ? 'selected' : ''}>${esc(f.code)}</option>`).join('')}</select><button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
 }
 async function saveHub(id) {
   const n = k => $('#' + k).value === '' ? null : +$('#' + k).value;
-  const row = { boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done') };
+  const row = { boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done'), feeder_id: +$('#hf').value };
   const { data, error } = await sb.from('hubs').update(row).eq('id', id).select();
   if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
   villageView(cur, 'n');
@@ -329,10 +331,11 @@ function parseSheet(wb) {
   for (const r of rows.slice(hi + 1)) {
     const g = i => i < 0 ? '' : String(r[i] ?? '').trim();
     for (const k of ['co', 'sbc', 'num', 'feeder']) if (g(I[k])) last[k] = g(I[k]);
-    const hub = g(I.hub); if (!/^h\d+$/i.test(hub)) continue;
+    let hub = g(I.hub), fd = last.feeder; const nh = g(I.nh);
+    if (!/^h/i.test(hub)) { if (hub === '' && /^h/i.test(nh)) { hub = nh.replace(/\s+/g, ' '); fd = 'UNASSIGNED'; } else continue; }
     const pick = L => Object.fromEntries(L.filter(([, i]) => g(i) !== '').map(([k, i]) => [k, num(g(i))]));
     const extra = { co: last.co, sbc: last.sbc, new_code: g(I.nh), holder: num(g(I.holder)), hdpe: num(g(I.hdpe)), adss96: num(g(I.a96)), adss48: num(g(I.a48)), hook: num(g(I.hook)), tension: num(g(I.ten)), joint: yn(g(I.jo)), olt: yn(g(I.olt)), hubspl: yn(g(I.hs)), total_cables: num(g(I.tot)), pretest: yn(g(I.pre)), pat: yn(g(I.pat)), not_box: g(I.nb), not_cable: g(I.nc), flat: g(I.fl), ports: pick(ports), lens: pick(lens) };
-    out.push({ cabinet: last.num || 'MAIN', feeder: last.feeder || 'F?', hub, row: { boxes_design: num(g(I.bd)), boxes_done: num(g(I.bn)), cables_design: num(g(I.cd)), cables_done: num(g(I.cn)), extra } });
+    out.push({ cabinet: last.num || 'MAIN', feeder: fd || 'F?', hub, row: { boxes_design: num(g(I.bd)), boxes_done: num(g(I.bn)), cables_design: num(g(I.cd)), cables_done: num(g(I.cn)), extra } });
   }
   return out;
 }
@@ -381,6 +384,36 @@ async function dashView() {
   L.sort((a, b) => (a.boxes_design ? a.bp : 999) - (b.boxes_design ? b.bp : 999));
   const T = k => L.reduce((s, v) => s + (+v[k] || 0), 0), stale = v => v.d === null || v.d >= 3, card = (n, t) => `<div class="hub"><b>${n}</b> ${t}</div>`;
   shell('لوحة المتابعة', `<div class="g">${card(L.length, 'قرية')}${card(T('hubs'), 'Hub')}${card(hp(T('boxes_done'), T('boxes_design')) + '%', `Boxes ${T('boxes_done')}/${T('boxes_design')}`)}${card(hp(T('cables_done'), T('cables_design')) + '%', `Cables ${T('cables_done')}/${T('cables_design')}`)}${card(T('open_issues'), 'مشكلة مفتوحة')}${card(L.filter(stale).length, 'قرية راكدة')}${card(T('warns'), 'Hub للمراجعة ⚠')}</div><small>الراكدة: مفيش تحديث من 3 أيام أو أكتر. الترتيب: الأقل إنجازاً أولاً.</small><h3>القرى</h3>` + L.map(v => `<div class="row tap ${stale(v) ? 'open' : ''}" onclick="gotoV(${v.id},'s')"><b>${esc(v.name)}</b> ${v.d === null ? '<small>· مفيش تحديثات</small>' : v.d >= 3 ? `<small>· راكدة ${v.d} يوم</small>` : ''}<div class="bar"><i style="width:${Math.min(100, v.bp)}%"></i></div><small>Boxes ${v.bp}% · Cables ${v.cp}% · ${v.hubs} Hub · ${v.open_issues} مشكلة${v.warns ? ' · ⚠ ' + v.warns : ''}</small></div>`).join(''), 'villagesView()');
+}
+const ITEMS = ['Box', 'Hub', ...[20, 30, 50, 80, 100, 120, 150, 200, 250, 300].map(n => `Cable ${n}m`)];
+async function loadStock(id) {
+  const [b, it, m] = await Promise.all([sb.from('stock_balance').select('*').eq('village_id', id), sb.from('stock_items').select('*').eq('village_id', id), sb.from('stock_moves').select('*').eq('village_id', id).order('id', { ascending: false }).limit(30)]);
+  return { b: Object.fromEntries((b.data || []).map(x => [x.item, +x.bal])), it: Object.fromEntries((it.data || []).map(x => [x.item, x])), m: m.data || [] };
+}
+function warehouseTab() {
+  const W = D.w, R = ITEMS.map(k => { const bal = W.b[k] || 0, c = W.it[k] || {}, req = +c.required || 0, mn = +c.min_qty || 0; return { k, bal, req, mn, short: Math.max(0, req - bal), low: mn > 0 && bal < mn }; });
+  const need = R.filter(r => r.short > 0 || r.low);
+  return `<button onclick="moveForm()">تسجيل وارد / صرف</button>${adm() ? '<button class="ghost" onclick="stockCfg()">المطلوب والحد الأدنى</button>' : ''}<h3>النواقص (${need.length})</h3>${need.map(r => `<div class="row open"><b>${r.k}</b>: المتبقي ${r.bal}${r.short ? ' · ناقص ' + r.short : ''}${r.low ? ' · أقل من الحد الأدنى' : ''}</div>`).join('') || '<p>مفيش نواقص.</p>'}<h3>الرصيد (وارد − صرف)</h3>${R.map(r => `<div class="row"><b>${r.k}</b>: ${r.bal} <small>(مطلوب ${r.req} · حد أدنى ${r.mn})</small></div>`).join('')}<h3>آخر الحركات</h3>${W.m.map(x => `<div class="row"><b>${x.kind === 'in' ? 'وارد' : 'صرف'}</b> ${x.qty} × ${esc(x.item)} · ${esc(x.move_date)}${x.note ? `<br><small>${esc(x.note)}</small>` : ''}<br><small class="by">${esc(D.nm[x.created_by] || '؟')}</small>${acts(x, 'stock_moves', 'moveForm')}</div>`).join('') || '<p>مفيش حركات.</p>'}`;
+}
+function moveForm(eid) {
+  const e = D.w.m.find(x => x.id == eid) || {};
+  shell(eid ? 'تعديل حركة' : 'حركة مخزن', `<label>النوع</label><select id="sk"><option value="in" ${e.kind === 'in' ? 'selected' : ''}>وارد</option><option value="out" ${e.kind === 'out' ? 'selected' : ''}>صرف</option></select><label>البند</label><select id="si">${ITEMS.map(k => `<option ${e.item === k ? 'selected' : ''}>${k}</option>`).join('')}</select><label>الكمية</label><input id="sq" type="number" min="1" value="${e.qty ?? ''}"><label>التاريخ</label><input id="sd" type="date" value="${esc(e.move_date || new Date().toISOString().slice(0, 10))}"><label>ملاحظة</label><input id="sn" value="${esc(e.note)}"><button onclick="saveMove(${eid || 0})">حفظ</button>`, `villageView(${cur},'w')`);
+}
+async function saveMove(eid) {
+  const q = +$('#sq').value; if (!(q > 0)) return alert('اكتب كمية صحيحة');
+  const row = { kind: $('#sk').value, item: $('#si').value, qty: q, move_date: $('#sd').value, note: $('#sn').value.trim() || null };
+  const { data, error } = await (eid ? sb.from('stock_moves').update(row).eq('id', eid).select() : sb.from('stock_moves').insert({ ...row, village_id: cur }).select());
+  if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, 'w');
+}
+function stockCfg() {
+  shell('المطلوب والحد الأدنى', ITEMS.map((k, i) => { const c = D.w.it[k] || {}; return `<div class="row"><b>${k}</b><label>المطلوب</label><input id="r${i}" type="number" min="0" value="${c.required ?? 0}"><label>حد أدنى</label><input id="n${i}" type="number" min="0" value="${c.min_qty ?? 0}"></div>`; }).join('') + '<button onclick="saveCfg()">حفظ</button>', `villageView(${cur},'w')`);
+}
+async function saveCfg() {
+  const rows = ITEMS.map((k, i) => ({ village_id: cur, item: k, required: +$('#r' + i).value || 0, min_qty: +$('#n' + i).value || 0 }));
+  const { error } = await sb.from('stock_items').upsert(rows, { onConflict: 'village_id,item' });
+  if (error) return alert(error.message);
+  villageView(cur, 'w');
 }
 boot();
 </script>
