@@ -38,7 +38,7 @@ footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 .o #drw{transform:none}.o #ov{display:block}
 .mi{display:block;width:100%;text-align:start;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:14px 4px;font-weight:400}
 .g{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.g .hub{margin:0}
-.tabs button{font-size:14px}
+.tabs button{font-size:13px;padding:8px 0}
 table.kv{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.kv td{padding:3px 6px;border-bottom:1px solid var(--line)}.kv td:last-child{text-align:right;font-weight:600}
 .cb{display:block;font-weight:400}
 </style>
@@ -47,6 +47,8 @@ table.kv{width:100%;border-collapse:collapse;font-size:14px;margin:4px 0}.kv td{
 <div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 // ===== حط بيانات مشروعك هنا (Supabase > Project Settings > API) =====
 const SUPABASE_URL = 'https://usrobwubmddccrpzzjeg.supabase.co';
@@ -73,7 +75,7 @@ function menu(on) { document.body.classList.toggle('o', on === undefined ? !docu
 function go(f) { menu(0); window[f](); }
 function shell(title, body, back) {
   const mi = (f, t) => `<button class="mi" onclick="go('${f}')">${t}</button>`;
-  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('dashView', 'لوحة المتابعة')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') + mi('logsView', 'السجل (Logs)') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
+  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('dashView', 'لوحة المتابعة')}${mi('searchView', 'بحث')}${me.role === 'owner' ? mi('backupRun', 'نسخة احتياطية') : ''}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') + mi('logsView', 'السجل (Logs)') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
   menu(0); scrollTo(0, 0);
 }
 
@@ -116,8 +118,9 @@ async function villageView(id, tab = 's') {
     ...['cabinets', 'feeders', 'hubs', 'lines', 'boxes'].map(t => sb.from(t).select('*').eq('village_id', id).order('code'))]);
   D = { u: u.data || [], i: i.data || [], c: n[0].data || [], f: n[1].data || [], h: n[2].data || [], l: n[3].data || [], b: n[4].data || [], nm: Object.fromEntries((p.data || []).map(x => [x.id, x.full_name])) };
   if (tab === 'w') D.w = await loadStock(id);
-  const T = { s: summaryTab, n: networkTab, u: updatesTab, i: issuesTab, w: warehouseTab }[tab]();
-  const tabs = [['s', 'الملخص'], ['n', 'الشبكة'], ['u', 'التحديثات'], ['i', 'المشاكل'], ['w', 'المخزن']];
+  if (tab === 'f') D.fl = await loadFiles(id);
+  const T = { s: summaryTab, n: networkTab, u: updatesTab, i: issuesTab, w: warehouseTab, f: filesTab }[tab]();
+  const tabs = [['s', 'الملخص'], ['n', 'الشبكة'], ['u', 'التحديثات'], ['i', 'المشاكل'], ['w', 'المخزن'], ['f', 'الملفات']];
   shell(v.name, `<div class="tabs">${tabs.map(t => `<button class="${tab === t[0] ? 'on' : ''}" onclick="villageView(${id},'${t[0]}')">${t[1]}</button>`).join('')}</div>${T}`, 'villagesView()');
 }
 
@@ -126,7 +129,7 @@ function summaryTab() {
   const S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), bd = S('boxes_design'), bn = S('boxes_done'), cd = S('cables_design'), cn = S('cables_done');
   const hubPct = bd ? hp(bn, bd) : null, warnL = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)), warn = warnL.length;
   const hubLine = bd ? `<div class="hub">Boxes: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">Cables: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم المنفذ أكبر من المصمم (غالباً غلطة إدخال أو Cable زيادة):${warnL.map(x => `<br>• ${esc(fcode(x))} / Hub ${esc(x.code)}: ` + [ov(x.boxes_done, x.boxes_design) ? `Boxes ${x.boxes_done} من ${x.boxes_design}` : '', ov(x.cables_done, x.cables_design) ? `Cables ${x.cables_done} من ${x.cables_design}` : ''].filter(Boolean).join('، ')).join('')}</div>` : ''}` : '';
-  return `<button class="ghost" onclick="exportView()">Export / تصدير</button><br><b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}${feederChart()}
+  return `<button class="ghost" onclick="exportView()">Export / تصدير</button><button class="ghost" onclick="shareWA()">WhatsApp</button><br><b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}${feederChart()}
 ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).map(x => `<div class="hub">${x[0]}: ${x[1]}</div>`).join('')}
 <h3>آخر تحديث</h3>${last ? `${esc(last.work_date)} – ${esc(last.contractors?.name || 'بدون مقاول')}<br>${esc(last.work_done)}<br><small>سجّله ${esc(D.nm[last.created_by] || '؟')}</small>` : '<p>مفيش تحديثات.</p>'}
 <h3>المشاكل المفتوحة (${open.length})</h3>${open.map(x => `<div class="row open">${esc(x.title)}</div>`).join('') || '<p>مفيش.</p>'}`;
@@ -446,7 +449,7 @@ function exportCols() {
 }
 function exportView() {
   const cols = exportCols(), groups = [...new Set(cols.map(c => c[0]))], today = new Date().toISOString().slice(0, 10);
-  shell('Export', `<h3>Hubs sheet</h3><label class="cb"><input type="checkbox" id="xh" checked style="width:auto"> Include Hubs sheet (same layout as the progress sheet, with TOTAL row)</label>` + groups.map(g => `<div class="row" dir="ltr"><b>${g}</b> <button class="ghost sm" onclick="xset('${g}',1)">All</button><button class="ghost sm" onclick="xset('${g}',0)">None</button>${cols.map((c, i) => c[0] === g ? `<label class="cb"><input type="checkbox" class="xc" data-g="${g}" value="${i}" style="width:auto" checked ${KEEP.includes(c[1]) ? 'disabled' : ''}> ${c[1]}</label>` : '').join('')}</div>`).join('') + `<h3>Other sheets</h3><div dir="ltr"><label class="cb"><input type="checkbox" id="xu" style="width:auto"> Daily updates</label><input id="xa" type="date" placeholder="From"><input id="xb" type="date" placeholder="To" value="${today}"><label class="cb"><input type="checkbox" id="xi" style="width:auto"> Issues</label><label class="cb"><input type="checkbox" id="xw" style="width:auto"> Warehouse (balances + moves)</label><label>Format</label><select id="xf"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (one file per sheet)</option></select></div><button onclick="doExport()">Download</button>`, `villageView(${cur},'s')`);
+  shell('Export', `<h3>Hubs sheet</h3><label class="cb"><input type="checkbox" id="xh" checked style="width:auto"> Include Hubs sheet (same layout as the progress sheet, with TOTAL row)</label>` + groups.map(g => `<div class="row" dir="ltr"><b>${g}</b> <button class="ghost sm" onclick="xset('${g}',1)">All</button><button class="ghost sm" onclick="xset('${g}',0)">None</button>${cols.map((c, i) => c[0] === g ? `<label class="cb"><input type="checkbox" class="xc" data-g="${g}" value="${i}" style="width:auto" checked ${KEEP.includes(c[1]) ? 'disabled' : ''}> ${c[1]}</label>` : '').join('')}</div>`).join('') + `<h3>Other sheets</h3><div dir="ltr"><label class="cb"><input type="checkbox" id="xu" style="width:auto"> Daily updates</label><input id="xa" type="date" placeholder="From"><input id="xb" type="date" placeholder="To" value="${today}"><label class="cb"><input type="checkbox" id="xi" style="width:auto"> Issues</label><label class="cb"><input type="checkbox" id="xw" style="width:auto"> Warehouse (balances + moves)</label><label>Format</label><select id="xf"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (one file per sheet)</option><option value="pdf">PDF (Hubs and Warehouse only, English)</option></select></div><button onclick="doExport()">Download</button>`, `villageView(${cur},'s')`);
 }
 function xset(g, on) { document.querySelectorAll(`.xc[data-g="${g}"]`).forEach(c => { if (!c.disabled) c.checked = !!on; }); }
 function hubSheet(pick) {
@@ -472,6 +475,14 @@ async function doExport() {
   if ($('#xw').checked) sheets.push(...await stockSheets());
   if (!sheets.length) return alert('Select at least one sheet');
   const base = (V.find(x => x.id == cur).name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'village') + '_' + new Date().toISOString().slice(0, 10);
+  if ($('#xf').value === 'pdf') {
+    const J = window.jspdf, ps = sheets.filter(([n]) => ['Hubs', 'Warehouse', 'Stock moves'].includes(n));
+    if (!J) return alert('مكتبة PDF مش اتحملت، جرّب تاني');
+    if (!ps.length) return alert('PDF للـ Hubs والمخزن بس، لأن العربي مش بيظهر فيه');
+    const doc = new J.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a3' });
+    ps.forEach(([n, a], i) => { if (i) doc.addPage(); doc.setFontSize(12); doc.text(`${V.find(x => x.id == cur).name.replace(/[^\x20-\x7E]/g, '')} - ${n} - ${new Date().toISOString().slice(0, 10)}`, 30, 28); const ri = a[0].map((t, c) => /ratio/.test(t) ? c : -1).filter(c => c >= 0); doc.autoTable({ head: [a[0]], body: a.slice(1).map(r => r.map((v, c) => ri.includes(c) && v !== '' ? (v * 100).toFixed(1) + '%' : v ?? '')), startY: 40, styles: { fontSize: 6, cellPadding: 2 }, headStyles: { fillColor: [18, 48, 58] } }); });
+    return doc.save(base + '.pdf');
+  }
   if ($('#xf').value === 'xlsx') { const wb = XLSX.utils.book_new(); sheets.forEach(([n, a]) => XLSX.utils.book_append_sheet(wb, mk(a), n)); XLSX.writeFile(wb, base + '.xlsx'); }
   else sheets.forEach(([n, a]) => saveCsv(XLSX.utils.sheet_to_csv(mk(a)), base + '_' + n.replace(/\W+/g, '_') + '.csv'));
 }
@@ -538,6 +549,68 @@ async function logDel() {
   const { data, error } = await sb.from('audit_log').delete().in('id', [...LG.sel]).select();
   if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية (للمالك بس)'));
   LG.sel.clear(); logsView();
+}
+function shareWA() {
+  const v = V.find(x => x.id == cur), S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), open = D.i.filter(x => x.status === 'open'), last = D.u[0], has = D.h.length > 0;
+  const t = [`*${v.name}* - ALC ODN`, has ? `Boxes: ${S('boxes_done')}/${S('boxes_design')} (${hp(S('boxes_done'), S('boxes_design'))}%)` : '', has ? `Cables: ${S('cables_done')}/${S('cables_design')} (${hp(S('cables_done'), S('cables_design'))}%)` : '', `Hubs: ${D.h.length}`, `Open issues: ${open.length}${open.slice(0, 3).map(x => '\n- ' + x.title).join('')}`, last ? `Last update (${last.work_date}): ${last.work_done.slice(0, 200)}` : ''].filter(Boolean).join('\n');
+  window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+}
+function searchView(q = '') {
+  shell('Search', `<input id="sq2" placeholder="Hub, Box, village, update, issue..." value="${esc(q)}" onkeydown="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button><div id="sr"></div>`, 'villagesView()');
+}
+async function doSearch() {
+  const q = $('#sq2').value.trim().replace(/[%,()*]/g, ' '); if (q.length < 2) return alert('اكتب حرفين على الأقل');
+  const L = `%${q}%`, [v, hb, bx, up, is, vs] = await Promise.all([
+    sb.from('villages').select('id,name').ilike('name', L).limit(10), sb.from('hubs').select('id,code,village_id').ilike('code', L).limit(20), sb.from('boxes').select('id,code,village_id').ilike('code', L).limit(20),
+    sb.from('updates').select('id,work_done,work_date,village_id').or(`work_done.ilike.${L},notes.ilike.${L}`).limit(20), sb.from('issues').select('id,title,village_id').or(`title.ilike.${L},details.ilike.${L}`).limit(20), sb.from('villages').select('id,name')]);
+  const nm = Object.fromEntries((vs.data || []).map(x => [x.id, x.name])), row = (t, s, vid, tab) => `<div class="row tap" onclick="gotoV(${vid},'${tab}')"><small>${t}</small><br>${esc(s)}<br><small>${esc(nm[vid] || '')}</small></div>`;
+  $('#sr').innerHTML = [...(v.data || []).map(x => row('Village', x.name, x.id, 's')), ...(hb.data || []).map(x => row('Hub', x.code, x.village_id, 'n')), ...(bx.data || []).map(x => row('Box', x.code, x.village_id, 'n')), ...(up.data || []).map(x => row('Update ' + x.work_date, x.work_done.slice(0, 80), x.village_id, 'u')), ...(is.data || []).map(x => row('Issue', x.title, x.village_id, 'i'))].join('') || '<p>No results.</p>';
+}
+async function backupRun() {
+  if (!confirm('هنزّل نسخة كاملة من كل الداتا في ملف Excel (من غير الملفات المرفوعة). كمّل؟')) return;
+  const T = ['villages', 'contractors', 'cabinets', 'feeders', 'hubs', 'lines', 'boxes', 'updates', 'issues', 'stock_items', 'stock_moves', 'hub_snapshots', 'attachments', 'profiles', 'audit_log'], wb = XLSX.utils.book_new();
+  for (const t of T) {
+    let all = [], from = 0;
+    for (;;) {
+      const { data, error } = await sb.from(t).select('*').order('id').range(from, from + 999);
+      if (error) return alert(t + ': ' + error.message);
+      all = all.concat(data); if (data.length < 1000) break; from += 1000;
+    }
+    const rows = all.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v !== null && typeof v === 'object' ? JSON.stringify(v) : v])));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{}]), t.slice(0, 31));
+  }
+  XLSX.writeFile(wb, 'ALC_ODN_backup_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
+async function loadFiles(id) {
+  const { data } = await sb.from('attachments').select('*').eq('village_id', id).order('id', { ascending: false }), L = data || [];
+  const { data: u } = L.length ? await sb.storage.from('files').createSignedUrls(L.map(x => x.path), 3600) : { data: [] };
+  const m = Object.fromEntries((u || []).map(x => [x.path, x.signedUrl]));
+  return L.map(x => ({ ...x, url: m[x.path] }));
+}
+function filesTab() {
+  const K = { general: 'General (CAD)', cad: 'CAD', photo: 'Photo', other: 'Other' }, cur0 = D.fl.find(x => x.kind === 'general');
+  const item = x => `<div class="row" dir="ltr"><b>${K[x.kind]}</b> ${x === cur0 ? '<small>(current General)</small>' : ''}<br>${/\.(jpe?g|png|gif|webp)$/i.test(x.path) && x.url ? `<img src="${x.url}" loading="lazy" style="max-width:100%;max-height:220px;border-radius:6px"><br>` : ''}<a href="${x.url || '#'}" download="${esc(x.name)}" target="_blank">${esc(x.name)}</a> <small>${Math.round(x.size / 1024)} KB · ${String(x.created_at).slice(0, 10)} · ${esc(D.nm[x.created_by] || '?')}</small>${x.note ? `<br><small>${esc(x.note)}</small>` : ''}${adm() ? `<br><button class="ghost sm" onclick="delFile(${x.id})">حذف</button>` : ''}</div>`;
+  return `<label>رفع ملف (صورة أو CAD أو أي ملف)</label><select id="uk"><option value="photo">Photo</option><option value="general">General (CAD)</option><option value="cad">CAD</option><option value="other">Other</option></select><input type="file" id="uf"><input id="un" placeholder="ملاحظة (اختياري)"><button onclick="upFile()">رفع</button>${D.fl.map(item).join('') || '<p>مفيش ملفات.</p>'}`;
+}
+function shrink(f) {
+  return new Promise(res => { const im = new Image(); im.onload = () => { const s = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = im.width * s; c.height = im.height * s; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); c.toBlob(b => res(b || f), 'image/jpeg', 0.75); }; im.onerror = () => res(f); im.src = URL.createObjectURL(f); });
+}
+async function upFile() {
+  const f = $('#uf').files[0]; if (!f) return alert('اختار ملف');
+  let blob = f, ext = (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+  if (/^image\//.test(f.type)) { blob = await shrink(f); ext = 'jpg'; }
+  const path = `${cur}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error } = await sb.storage.from('files').upload(path, blob, { contentType: blob.type || 'application/octet-stream' });
+  if (error) return alert('الرفع فشل: ' + error.message);
+  const { error: e2 } = await sb.from('attachments').insert({ village_id: cur, kind: $('#uk').value, path, name: f.name, size: blob.size, note: $('#un').value.trim() || null });
+  if (e2) { await sb.storage.from('files').remove([path]); return alert(e2.message); }
+  villageView(cur, 'f');
+}
+async function delFile(id) {
+  const x = D.fl.find(y => y.id == id); if (!confirm('حذف الملف نهائياً؟')) return;
+  const { error } = await sb.storage.from('files').remove([x.path]); if (error) return alert(error.message);
+  const { error: e2 } = await sb.from('attachments').delete().eq('id', id); if (e2) return alert(e2.message);
+  villageView(cur, 'f');
 }
 boot();
 </script>
