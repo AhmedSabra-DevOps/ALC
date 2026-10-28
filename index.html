@@ -37,6 +37,7 @@ footer{text-align:center;padding:18px;color:var(--mut);font-size:13px}
 #drw{position:fixed;top:0;bottom:0;inset-inline-start:0;width:75%;max-width:300px;background:var(--card);z-index:9;transform:translateX(100%);transition:.2s;padding:16px;overflow:auto}
 .o #drw{transform:none}.o #ov{display:block}
 .mi{display:block;width:100%;text-align:start;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;margin:0;padding:14px 4px;font-weight:400}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.g .hub{margin:0}
 </style>
 </head>
 <body>
@@ -55,13 +56,13 @@ if (!/^https:\/\//.test(SUPABASE_URL) || typeof supabase === 'undefined') {
 }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const ST = ['لم يبدأ','تبكيس','تحديد المكان','تركيب البوكس','سحب الكابل','الكابل والبوكس راكبين','قياس الأطوال','تم التسليم'];
+const ST = ['لم يبدأ','تبكيس','تحديد المكان','تركيب Box','سحب Cable','Cable و Box راكبين','قياس الأطوال','تم التسليم'];
 const HS = ['لم يبدأ','تبكيس','تركيب','تسليم'];
 const adm = () => me.role !== 'engineer';
 const pct = b => b.length ? Math.round(b.reduce((s, x) => s + x.stage, 0) / (7 * b.length) * 100) : 0;
 const by = (a, k, id) => a.filter(x => x[k] == id);
 const opts = (L, v) => L.map((s, i) => `<option value="${i}" ${v == i ? 'selected' : ''}>${s}</option>`).join('');
-const msg = e => /8 boxes/.test(e) ? 'الـ Line فيها 8 بوكسات بالفعل' : e;
+const msg = e => /8 boxes/.test(e) ? 'الـ Line فيها 8 Boxes بالفعل' : e;
 const FOOT = '<footer dir="ltr">Designed &amp; Developed by Ahmed Sabra · © 2026</footer>';
 let me, V = [], VS = [], cur, D = {};
 
@@ -69,7 +70,7 @@ function menu(on) { document.body.classList.toggle('o', on === undefined ? !docu
 function go(f) { menu(0); window[f](); }
 function shell(title, body, back) {
   const mi = (f, t) => `<button class="mi" onclick="go('${f}')">${t}</button>`;
-  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
+  app.innerHTML = `<header><button class="ghost" onclick="menu()" aria-label="القائمة">☰</button>${back ? `<button class="ghost" onclick="${back}" aria-label="رجوع">‹</button>` : ''}<b>${esc(title)}</b><span class="sp"></span><small>${esc(me.full_name)}</small></header><div id="ov" onclick="menu(0)"></div><nav id="drw"><b>ALC – ODN</b>${mi('villagesView', 'القرى')}${mi('dashView', 'لوحة المتابعة')}${mi('openIssuesView', 'المشاكل المفتوحة')}${mi('accountView', 'حسابي')}${adm() ? mi('adminView', 'الإدارة') : ''}<button class="mi" onclick="menu(0);logout()">خروج</button></nav><main>${body}</main>${FOOT}`;
   menu(0); scrollTo(0, 0);
 }
 
@@ -119,8 +120,8 @@ async function villageView(id, tab = 's') {
 function summaryTab() {
   const open = D.i.filter(x => x.status === 'open'), last = D.u[0];
   const S = k => D.h.reduce((s, x) => s + (+x[k] || 0), 0), bd = S('boxes_design'), bn = S('boxes_done'), cd = S('cables_design'), cn = S('cables_done');
-  const hubPct = bd ? hp(bn, bd) : null, warn = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)).length;
-  const hubLine = bd ? `<div class="hub">صناديق: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">كابلات: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم رقم منفذ أكبر من التصميم، راجعهم</div>` : ''}` : '';
+  const hubPct = bd ? hp(bn, bd) : null, warnL = D.h.filter(x => ov(x.boxes_done, x.boxes_design) || ov(x.cables_done, x.cables_design)), warn = warnL.length;
+  const hubLine = bd ? `<div class="hub">Boxes: ${bn}/${bd} (${hp(bn, bd)}%)</div><div class="hub">Cables: ${cn}/${cd} (${hp(cn, cd)}%)</div>${warn ? `<div class="hub">⚠ ${warn} Hub فيهم المنفذ أكبر من المصمم (غالباً غلطة إدخال أو Cable زيادة):${warnL.map(x => `<br>• ${esc(fcode(x))} / Hub ${esc(x.code)}: ` + [ov(x.boxes_done, x.boxes_design) ? `Boxes ${x.boxes_done} من ${x.boxes_design}` : '', ov(x.cables_done, x.cables_design) ? `Cables ${x.cables_done} من ${x.cables_design}` : ''].filter(Boolean).join('، ')).join('')}</div>` : ''}` : '';
   return `<b>${hubPct ?? pct(D.b)}% إنجاز</b> <small>${D.b.length} Box · ${D.h.length} Hub · ${D.f.length} Feeder · ${D.c.length} Main</small><div class="bar"><i style="width:${Math.min(100, hubPct ?? pct(D.b))}%"></i></div>${hubLine}
 ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).map(x => `<div class="hub">${x[0]}: ${x[1]}</div>`).join('')}
 <h3>آخر تحديث</h3>${last ? `${esc(last.work_date)} – ${esc(last.contractors?.name || 'بدون مقاول')}<br>${esc(last.work_done)}<br><small>سجّله ${esc(D.nm[last.created_by] || '؟')}</small>` : '<p>مفيش تحديثات.</p>'}
@@ -129,17 +130,17 @@ ${ST.map((s, k) => [s, D.b.filter(b => b.stage == k).length]).filter(x => x[1]).
 
 // ---------- الشبكة ----------
 function networkTab() {
-  const boxH = b => `<div class="box"><span>${esc(b.code)}</span><select onchange="setStage(${b.id},this.value)">${opts(ST, b.stage)}</select></div>${b.cable_len ? `<small>الكابل: ${esc(b.cable_len)} م</small>` : ''}${b.handover_to ? `<small> · استلم: ${esc(b.handover_to)}</small>` : ''}`;
+  const boxH = b => `<div class="box"><span>${esc(b.code)}</span><select onchange="setStage(${b.id},this.value)">${opts(ST, b.stage)}</select></div>${b.cable_len ? `<small>Cable: ${esc(b.cable_len)} م</small>` : ''}${b.handover_to ? `<small> · استلم: ${esc(b.handover_to)}</small>` : ''}`;
   const lineH = l => { const bs = by(D.b, 'line_id', l.id); return `<details><summary>Line ${esc(l.code)} <small>${bs.length}/8 · ${bs.reduce((s, x) => s + (+x.cable_len || 0), 0)} م</small></summary>${bs.map(boxH).join('')}</details>`; };
   const hubH = h => { const ls = by(D.l, 'hub_id', h.id);
-    return `<details><summary>Hub ${esc(h.code)} <small>${hubStat(h)}</small></summary><div class="hub">${hubExtra(h)}</div><button class="ghost sm" onclick="hubEdit(${h.id})">تعديل الأرقام</button><select onchange="setHub(${h.id},this.value)">${opts(HS, h.stage)}</select>${ls.map(lineH).join('')}</details>`; };
-  const feedH = f => `<details><summary>Feeder ${esc(f.code)} <small>مخطط ${f.planned_len ?? '—'} م · ${by(D.h, 'feeder_id', f.id).length} Hub</small></summary>${by(D.h, 'feeder_id', f.id).map(hubH).join('')}</details>`;
-  const cabH = c => `<details><summary><b>Main ${esc(c.code)}</b> <small>${esc(c.address || '')} · ${by(D.f, 'cabinet_id', c.id).length} Feeder</small></summary>${by(D.f, 'cabinet_id', c.id).map(feedH).join('')}</details>`;
-  return (adm() ? `<label>استيراد من Excel أو CSV</label><input type="file" id="f" accept=".xlsx,.xls,.csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
+    return `<details><summary>Hub ${esc(h.code)} <small>${hubStat(h)}</small></summary><div class="hub">${hubExtra(h)}</div><button class="ghost sm" onclick="hubEdit(${h.id})">تعديل الأرقام</button>${nd('hubs', h.id, 'الـ Hub')}<select onchange="setHub(${h.id},this.value)">${opts(HS, h.stage)}</select>${ls.map(lineH).join('')}</details>`; };
+  const feedH = f => `<details><summary>Feeder ${esc(f.code)} <small>مخطط ${f.planned_len ?? '—'} م · ${by(D.h, 'feeder_id', f.id).length} Hub</small></summary>${nd('feeders', f.id, 'الـ Feeder')}${by(D.h, 'feeder_id', f.id).map(hubH).join('')}</details>`;
+  const cabH = c => `<details><summary><b>Main ${esc(c.code)}</b> <small>${esc(c.address || '')} · ${by(D.f, 'cabinet_id', c.id).length} Feeder</small></summary>${nd('cabinets', c.id, 'الـ Main')}${by(D.f, 'cabinet_id', c.id).map(feedH).join('')}</details>`;
+  return (adm() ? `<label>استيراد من Excel أو CSV</label><input type="file" id="f" accept=".xlsx,.xls,.csv,text/csv"><button onclick="importCsv(${cur})">استيراد</button><button class="ghost" onclick="clearNet()">مسح كل شبكة القرية</button><br><small>الأعمدة: cabinet_code, cabinet_address, feeder_code, feeder_planned_len, hub_code, line_code, box_code, box_address</small>` : '') + (D.c.map(cabH).join('') || '<p>مفيش بيانات شبكة لسه.</p>');
 }
 async function setStage(id, v) {
   v = +v; const p = { stage: v };
-  if (v === 6) { const l = prompt('الطول الفعلي للكابل بالمتر'); if (l === null) return villageView(cur, 'n'); p.cable_len = +l || null; }
+  if (v === 6) { const l = prompt('الطول الفعلي للـ Cable بالمتر'); if (l === null) return villageView(cur, 'n'); p.cable_len = +l || null; }
   if (v === 7) { const t = prompt('الجهة اللي استلمت'); if (t === null) return villageView(cur, 'n'); p.handover_to = t.trim() || null; }
   const { error } = await sb.from('boxes').update(p).eq('id', id);
   if (error) { alert(msg(error.message)); villageView(cur, 'n'); }
@@ -273,9 +274,9 @@ async function openIssuesView() {
   const nm = Object.fromEntries((v || []).map(x => [x.id, x.name]));
   shell('المشاكل المفتوحة', (i || []).map(x => `<div class="row open tap" onclick="gotoV(${x.village_id})"><b>${esc(x.title)}</b><br><small>${esc(nm[x.village_id] || '')}</small></div>`).join('') || '<p>مفيش مشاكل مفتوحة.</p>', 'villagesView()');
 }
-async function gotoV(id) {
+async function gotoV(id, tab = 'i') {
   if (!V.find(x => x.id == id)) V = (await sb.from('villages').select('*').order('name')).data || [];
-  villageView(id, 'i');
+  villageView(id, tab);
 }
 function accountView() {
   shell('حسابي', `<h3>${esc(me.full_name)}</h3><small>${esc(me.username)}</small><h3>تغيير كلمة السر</h3><input id="np" type="password" placeholder="كلمة السر الجديدة" autocomplete="new-password"><input id="np2" type="password" placeholder="أعد كتابتها" autocomplete="new-password"><button onclick="changePw()">حفظ</button>`, 'villagesView()');
@@ -290,17 +291,17 @@ async function changePw() {
 }
 const hp = (a, b) => b ? Math.round(a / b * 100) : 0;
 const ov = (a, b) => a != null && b != null && a > b;
-const hubStat = h => `صناديق ${h.boxes_done ?? '—'}/${h.boxes_design ?? '—'}${ov(h.boxes_done, h.boxes_design) ? ' ⚠' : ''} · كابلات ${h.cables_done ?? '—'}/${h.cables_design ?? '—'}${ov(h.cables_done, h.cables_design) ? ' ⚠' : ''}`;
-const EL = { co: 'المقاول', sbc: 'SBC', new_code: 'الكود الجديد', holder: 'Holder', hdpe: 'HDPE م', adss96: 'ADSS 96F م', adss48: 'ADSS 48F م', hook: 'Hook', tension: 'Tension clamp', joint: 'Joint', olt: 'OLT', hubspl: 'Hub spliced', pretest: 'Pretest', pat: 'PAT', total_cables: 'إجمالي الكابلات', not_box: 'NOT BOX', not_cable: 'NOT CABLE', flat: 'flat' };
+const hubStat = h => `Boxes ${h.boxes_done ?? '—'}/${h.boxes_design ?? '—'}${ov(h.boxes_done, h.boxes_design) ? ' ⚠' : ''} · Cables ${h.cables_done ?? '—'}/${h.cables_design ?? '—'}${ov(h.cables_done, h.cables_design) ? ' ⚠' : ''}`;
+const EL = { co: 'المقاول', sbc: 'SBC', new_code: 'الكود الجديد', holder: 'Holder', hdpe: 'HDPE م', adss96: 'ADSS 96F م', adss48: 'ADSS 48F م', hook: 'Hook', tension: 'Tension clamp', joint: 'Joint', olt: 'OLT', hubspl: 'Hub spliced', pretest: 'Pretest', pat: 'PAT', total_cables: 'إجمالي Cables', not_box: 'NOT BOX', not_cable: 'NOT CABLE', flat: 'flat' };
 const fv = v => v === true ? 'تم' : v === false ? 'لا' : v;
 function hubExtra(h) {
   const x = h.extra || {}, a = Object.keys(EL).filter(k => x[k] != null && x[k] !== '').map(k => `${EL[k]}: ${esc(fv(x[k]))}`);
   const o = (t, m, u) => m && Object.keys(m).length ? `${t}: ` + Object.entries(m).map(([k, v]) => `${k}${u}=${esc(v)}`).join('، ') : '';
-  return [...a, o('Ports', x.ports, ''), o('الكابلات', x.lens, 'م')].filter(Boolean).join('<br>') || '<small>مفيش تفاصيل</small>';
+  return [...a, o('Ports', x.ports, ''), o('Cables', x.lens, 'م')].filter(Boolean).join('<br>') || '<small>مفيش تفاصيل</small>';
 }
 function hubEdit(id) {
   const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`;
-  shell('Hub ' + h.code, f('boxes_design', 'صناديق (التصميم)') + f('boxes_done', 'صناديق (المنفذ)') + f('cables_design', 'كابلات (التصميم)') + f('cables_done', 'كابلات (المنفذ)') + `<button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
+  shell('Hub ' + h.code, f('boxes_design', 'Boxes (التصميم)') + f('boxes_done', 'Boxes (المنفذ)') + f('cables_design', 'Cables (التصميم)') + f('cables_done', 'Cables (المنفذ)') + `<button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
 }
 async function saveHub(id) {
   const n = k => $('#' + k).value === '' ? null : +$('#' + k).value;
@@ -357,6 +358,29 @@ async function importXlsx(vid, file) {
   } catch (e) { alert('وقف الاستيراد بعد ' + n + ' Hub: ' + e.message); return villageView(vid, 'n'); }
   alert('تم استيراد ' + n + ' Hub');
   villageView(vid, 'n');
+}
+const nd = (t, id, l) => adm() ? `<button class="ghost sm" onclick="delNet('${t}',${id})">حذف ${l}</button>` : '';
+const fcode = x => 'Feeder ' + ((D.f.find(f => f.id == x.feeder_id) || {}).code || '?');
+async function delNet(t, id) {
+  if (!confirm('الحذف هيمسح كل اللي تحته كمان. متأكد؟')) return;
+  const { data, error } = await sb.from(t).delete().eq('id', id).select();
+  if (error || !data.length) return alert('ماتحذفش: ' + (error ? error.message : 'مفيش صلاحية'));
+  villageView(cur, 'n');
+}
+async function clearNet() {
+  const v = V.find(x => x.id == cur);
+  if (prompt('هيتمسح كل الـ Mains والـ Feeders والـ Hubs في "' + v.name + '". اكتب اسم القرية للتأكيد:') !== v.name) return alert('الاسم مش مطابق، اتلغى');
+  const { error } = await sb.from('cabinets').delete().eq('village_id', cur);
+  if (error) return alert(error.message);
+  villageView(cur, 'n');
+}
+async function dashView() {
+  const { data, error } = await sb.from('village_stats').select('*');
+  if (error) return alert('شغّل update3.sql الأول: ' + error.message);
+  const L = (data || []).map(v => ({ ...v, bp: hp(v.boxes_done, v.boxes_design), cp: hp(v.cables_done, v.cables_design), d: v.last_update ? Math.floor((Date.now() - new Date(v.last_update)) / 864e5) : null }));
+  L.sort((a, b) => (a.boxes_design ? a.bp : 999) - (b.boxes_design ? b.bp : 999));
+  const T = k => L.reduce((s, v) => s + (+v[k] || 0), 0), stale = v => v.d === null || v.d >= 3, card = (n, t) => `<div class="hub"><b>${n}</b> ${t}</div>`;
+  shell('لوحة المتابعة', `<div class="g">${card(L.length, 'قرية')}${card(T('hubs'), 'Hub')}${card(hp(T('boxes_done'), T('boxes_design')) + '%', `Boxes ${T('boxes_done')}/${T('boxes_design')}`)}${card(hp(T('cables_done'), T('cables_design')) + '%', `Cables ${T('cables_done')}/${T('cables_design')}`)}${card(T('open_issues'), 'مشكلة مفتوحة')}${card(L.filter(stale).length, 'قرية راكدة')}${card(T('warns'), 'Hub للمراجعة ⚠')}</div><small>الراكدة: مفيش تحديث من 3 أيام أو أكتر. الترتيب: الأقل إنجازاً أولاً.</small><h3>القرى</h3>` + L.map(v => `<div class="row tap ${stale(v) ? 'open' : ''}" onclick="gotoV(${v.id},'s')"><b>${esc(v.name)}</b> ${v.d === null ? '<small>· مفيش تحديثات</small>' : v.d >= 3 ? `<small>· راكدة ${v.d} يوم</small>` : ''}<div class="bar"><i style="width:${Math.min(100, v.bp)}%"></i></div><small>Boxes ${v.bp}% · Cables ${v.cp}% · ${v.hubs} Hub · ${v.open_issues} مشكلة${v.warns ? ' · ⚠ ' + v.warns : ''}</small></div>`).join(''), 'villagesView()');
 }
 boot();
 </script>
