@@ -67,7 +67,7 @@ const adm = () => me.role !== 'engineer';
 const pct = b => b.length ? Math.round(b.reduce((s, x) => s + x.stage, 0) / (7 * b.length) * 100) : 0;
 const by = (a, k, id) => a.filter(x => x[k] == id);
 const opts = (L, v) => L.map((s, i) => `<option value="${i}" ${v == i ? 'selected' : ''}>${s}</option>`).join('');
-const msg = e => /8 boxes/.test(e) ? 'الـ Line فيها 8 Boxes بالفعل' : e;
+const msg = e => { let m; return /8 boxes/.test(e) ? 'الـ Line فيها 8 Boxes بالفعل' : (m = e.match(/Insufficient stock: (\S+) available/)) ? `الرصيد مش كفاية (المتاح ${m[1]})` : e; };
 const FOOT = '<footer dir="ltr">Designed &amp; Developed by Ahmed Sabra · © 2026</footer>';
 let me, V = [], VS = [], cur, D = {};
 
@@ -309,15 +309,18 @@ function hubExtra(h) {
 const LENS = [5, 20, 30, 50, 80, 100, 120, 150, 200, 250, 300];
 function hubEdit(id) {
   const h = D.h.find(x => x.id == id), f = (k, t) => `<label>${t}</label><input id="${k}" type="number" value="${h[k] ?? ''}">`, L = h.extra?.lens || {};
-  shell('Hub ' + h.code, `<label>Hub code</label><input id="hc" value="${esc(h.code)}">` + f('boxes_design', 'Boxes (design)') + f('boxes_done', 'Boxes (done)') + f('cables_design', 'Cables (design)') + f('cables_done', 'Cables (done)') + `<label>Feeder</label><select id="hf">${D.f.map(x => `<option value="${x.id}" ${x.id == h.feeder_id ? 'selected' : ''}>${esc(x.code)}</option>`).join('')}</select><h3>Installed cables by length (count)</h3><div dir="ltr">${LENS.map(n => `<label class="cb">${n} m<input class="lc" data-n="${n}" type="number" min="0" value="${L[n] ?? ''}"></label>`).join('')}</div><button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
+  shell('Hub ' + h.code, `<label>Hub code</label><input id="hc" value="${esc(h.code)}">` + f('boxes_design', 'Boxes (design)') + f('boxes_done', 'Boxes (done)') + f('cables_design', 'Cables (design)') + f('cables_done', 'Cables (done)') + `<label>Feeder</label><select id="hf">${D.f.map(x => `<option value="${x.id}" ${x.id == h.feeder_id ? 'selected' : ''}>${esc(x.code)}</option>`).join('')}</select><h3>Boxes by type (count)</h3><div dir="ltr">${[9, 10, 11].map(k => `<label class="cb">Box ${k}<input class="pc" data-n="${k}" type="number" min="0" value="${h.extra?.ports?.[k] ?? ''}"></label>`).join('')}</div><h3>Installed cables by length (count)</h3><div dir="ltr">${LENS.map(n => `<label class="cb">${n} m<input class="lc" data-n="${n}" type="number" min="0" value="${L[n] ?? ''}"></label>`).join('')}</div><button onclick="saveHub(${id})">حفظ</button>`, `villageView(${cur},'n')`);
 }
 async function saveHub(id) {
-  const h = D.h.find(x => x.id == id), n = k => $('#' + k).value === '' ? null : +$('#' + k).value, lens = { ...(h.extra?.lens || {}) };
+  const h = D.h.find(x => x.id == id), n = k => $('#' + k).value === '' ? null : +$('#' + k).value, lens = { ...(h.extra?.lens || {}) }, ports = { ...(h.extra?.ports || {}) };
   document.querySelectorAll('.lc').forEach(i => { if (+i.value > 0) lens[i.dataset.n] = +i.value; else delete lens[i.dataset.n]; });
-  const tot = Object.values(lens).reduce((s, v) => s + (+v || 0), 0);
-  const row = { code: $('#hc').value.trim() || h.code, boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done'), feeder_id: +$('#hf').value, extra: { ...(h.extra || {}), lens, ...(tot ? { total_cables: tot } : {}) } };
+  document.querySelectorAll('.pc').forEach(i => { if (+i.value > 0) ports[i.dataset.n] = +i.value; else delete ports[i.dataset.n]; });
+  const tot = Object.values(lens).reduce((s, v) => s + (+v || 0), 0), extra = { ...(h.extra || {}), lens, ports, ...(tot ? { total_cables: tot } : {}) };
+  const row = { code: $('#hc').value.trim() || h.code, boxes_design: n('boxes_design'), boxes_done: n('boxes_done'), cables_design: n('cables_design'), cables_done: n('cables_done'), feeder_id: +$('#hf').value, extra };
   const { data, error } = await sb.from('hubs').update(row).eq('id', id).select();
   if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
+  const t = await postMoves(deltaMoves(h.extra, extra, 'Hub ' + row.code));
+  if (t) alert(t);
   villageView(cur, 'n');
 }
 function parseSheet(wb) {
@@ -393,25 +396,26 @@ async function dashView() {
   const T = k => L.reduce((s, v) => s + (+v[k] || 0), 0), stale = v => v.d === null || v.d >= 3, card = (n, t) => `<div class="hub"><b>${n}</b> ${t}</div>`;
   shell('لوحة المتابعة', `<div class="g">${card(L.length, 'قرية')}${card(T('hubs'), 'Hub')}${card(hp(T('boxes_done'), T('boxes_design')) + '%', `Boxes ${T('boxes_done')}/${T('boxes_design')}`)}${card(hp(T('cables_done'), T('cables_design')) + '%', `Cables ${T('cables_done')}/${T('cables_design')}`)}${card(T('open_issues'), 'مشكلة مفتوحة')}${card(L.filter(stale).length, 'قرية راكدة')}${card(T('warns'), 'Hub للمراجعة ⚠')}</div><small>الراكدة: مفيش تحديث من 3 أيام أو أكتر. الترتيب: الأقل إنجازاً أولاً.</small><h3>القرى</h3>` + L.map(v => `<div class="row tap ${stale(v) ? 'open' : ''}" onclick="gotoV(${v.id},'s')"><b>${esc(v.name)}</b> ${v.d === null ? '<small>· مفيش تحديثات</small>' : v.d >= 3 ? `<small>· راكدة ${v.d} يوم</small>` : ''}${dbar('Boxes', v.bp, 'var(--acc)')}${dbar('Cables', v.cp, '#6B8E9B')}<small>${v.hubs} Hubs · ${v.open_issues} مشكلة${v.warns ? ' · ⚠ ' + v.warns : ''}</small></div>`).join(''), 'villagesView()');
 }
-const ITEMS = ['Box', 'Hub', ...[20, 30, 50, 80, 100, 120, 150, 200, 250, 300].map(n => `Cable ${n}m`)];
+const ITEMS = ['Box 9', 'Box 10', 'Box 11', 'Hub', ...[20, 30, 50, 80, 100, 120, 150, 200, 250, 300].map(n => `Cable ${n}m`)];
 async function loadStock(id) {
   const [b, it, m] = await Promise.all([sb.from('stock_balance').select('*').eq('village_id', id), sb.from('stock_items').select('*').eq('village_id', id), sb.from('stock_moves').select('*').eq('village_id', id).order('id', { ascending: false }).limit(30)]);
   return { b: Object.fromEntries((b.data || []).map(x => [x.item, +x.bal])), it: Object.fromEntries((it.data || []).map(x => [x.item, x])), m: m.data || [] };
 }
 function warehouseTab() {
-  const W = D.w, R = ITEMS.map(k => { const bal = W.b[k] || 0, c = W.it[k] || {}, req = +c.required || 0, mn = +c.min_qty || 0; return { k, bal, req, mn, short: Math.max(0, req - bal), low: mn > 0 && bal < mn }; });
+  const W = D.w, R = [...ITEMS, ...(W0(D.w) ? ['Box'] : [])].map(k => { const bal = W.b[k] || 0, c = W.it[k] || {}, req = +c.required || 0, mn = +c.min_qty || 0; return { k, bal, req, mn, short: Math.max(0, req - bal), low: mn > 0 && bal < mn }; });
   const need = R.filter(r => r.short > 0 || r.low);
-  return `<button onclick="moveForm()">تسجيل وارد / صرف</button>${adm() ? '<button class="ghost" onclick="stockCfg()">المطلوب والحد الأدنى</button>' : ''}<h3>النواقص (${need.length})</h3>${need.map(r => `<div class="row open"><b>${r.k}</b>: المتبقي ${r.bal}${r.short ? ' · ناقص ' + r.short : ''}${r.low ? ' · أقل من الحد الأدنى' : ''}</div>`).join('') || '<p>مفيش نواقص.</p>'}<h3>الرصيد (وارد − صرف)</h3>${R.map(r => `<div class="row"><b>${r.k}</b>: ${r.bal} <small>(مطلوب ${r.req} · حد أدنى ${r.mn})</small></div>`).join('')}<h3>آخر الحركات</h3>${W.m.map(x => `<div class="row"><b>${x.kind === 'in' ? 'وارد' : 'صرف'}</b> ${x.qty} × ${esc(x.item)} · ${esc(x.move_date)}${x.note ? `<br><small>${esc(x.note)}</small>` : ''}<br><small class="by">${esc(D.nm[x.created_by] || '؟')}</small>${acts(x, 'stock_moves', 'moveForm')}</div>`).join('') || '<p>مفيش حركات.</p>'}`;
+  return `<button onclick="moveForm()">تسجيل وارد / صرف</button><button class="ghost" onclick="bulkForm()">وارد دفعة</button><button class="ghost" onclick="transferForm()">نقل لقرية تانية</button>${adm() ? '<button class="ghost" onclick="stockCfg()">المطلوب والحد الأدنى</button>' : ''}<h3>النواقص (${need.length})</h3>${need.map(r => `<div class="row open"><b>${r.k === 'Box' ? 'Box (old)' : r.k}</b>: المتبقي ${r.bal}${r.short ? ' · ناقص ' + r.short : ''}${r.low ? ' · أقل من الحد الأدنى' : ''}</div>`).join('') || '<p>مفيش نواقص.</p>'}<h3>الرصيد (وارد − صرف)</h3>${R.map(r => `<div class="row"><b>${r.k === 'Box' ? 'Box (old)' : r.k}</b>: ${r.bal} <small>(مطلوب ${r.req} · حد أدنى ${r.mn})</small></div>`).join('')}<h3>آخر الحركات</h3>${W.m.map(x => `<div class="row"><b>${x.kind === 'in' ? 'وارد' : 'صرف'}</b> ${x.qty} × ${esc(x.item)} · ${esc(x.move_date)}${x.note ? `<br><small>${esc(x.note)}</small>` : ''}<br><small class="by">${esc(D.nm[x.created_by] || '؟')}</small>${acts(x, 'stock_moves', 'moveForm')}</div>`).join('') || '<p>مفيش حركات.</p>'}`;
 }
 function moveForm(eid) {
   const e = D.w.m.find(x => x.id == eid) || {};
-  shell(eid ? 'تعديل حركة' : 'حركة مخزن', `<label>النوع</label><select id="sk"><option value="in" ${e.kind === 'in' ? 'selected' : ''}>وارد</option><option value="out" ${e.kind === 'out' ? 'selected' : ''}>صرف</option></select><label>البند</label><select id="si">${ITEMS.map(k => `<option ${e.item === k ? 'selected' : ''}>${k}</option>`).join('')}</select><label>الكمية</label><input id="sq" type="number" min="1" value="${e.qty ?? ''}"><label>التاريخ</label><input id="sd" type="date" value="${esc(e.move_date || new Date().toISOString().slice(0, 10))}"><label>ملاحظة</label><input id="sn" value="${esc(e.note)}"><button onclick="saveMove(${eid || 0})">حفظ</button>`, `villageView(${cur},'w')`);
+  shell(eid ? 'تعديل حركة' : 'حركة مخزن', `<label>النوع</label><select id="sk"><option value="in" ${e.kind === 'in' ? 'selected' : ''}>وارد</option><option value="out" ${e.kind === 'out' ? 'selected' : ''}>صرف</option></select><label>البند</label><select id="si">${[...ITEMS, ...(e.item === 'Box' ? ['Box'] : [])].map(k => `<option ${e.item === k ? 'selected' : ''}>${k}</option>`).join('')}</select><label>الكمية</label><input id="sq" type="number" min="1" value="${e.qty ?? ''}"><label>التاريخ</label><input id="sd" type="date" value="${esc(e.move_date || new Date().toISOString().slice(0, 10))}"><label>ملاحظة</label><input id="sn" value="${esc(e.note)}"><button onclick="saveMove(${eid || 0})">حفظ</button>`, `villageView(${cur},'w')`);
 }
 async function saveMove(eid) {
   const q = +$('#sq').value; if (!(q > 0)) return alert('اكتب كمية صحيحة');
+  if (!eid && $('#sk').value === 'out' && q > (D.w.b[$('#si').value] || 0)) return alert(`الرصيد مش كفاية (المتاح ${D.w.b[$('#si').value] || 0})`);
   const row = { kind: $('#sk').value, item: $('#si').value, qty: q, move_date: $('#sd').value, note: $('#sn').value.trim() || null };
   const { data, error } = await (eid ? sb.from('stock_moves').update(row).eq('id', eid).select() : sb.from('stock_moves').insert({ ...row, village_id: cur }).select());
-  if (error || !data.length) return alert('ماتحفظش: ' + (error ? error.message : 'مفيش صلاحية'));
+  if (error || !data.length) return alert('ماتحفظش: ' + (error ? msg(error.message) : 'مفيش صلاحية'));
   villageView(cur, 'w');
 }
 function stockCfg() {
@@ -620,7 +624,7 @@ function hubRef(ref) {
   return m.length === 1 ? m[0] : m.length ? 'ambiguous' : null;
 }
 function parsePaste(t) {
-  const R = { u: {}, hubs: [], cab: [], stock: [], err: [] }, num = v => (v === '' || isNaN(+v)) ? null : +v;
+  const R = { u: {}, hubs: [], cab: [], por: [], stock: [], err: [] }, num = v => (v === '' || isNaN(+v)) ? null : +v;
   t.split(/\r?\n/).forEach((ln, i) => {
     ln = ln.trim(); if (!ln) return;
     const m = ln.match(/^([A-Za-z]+)(?:\s+([^:]+?))?\s*:\s*(.*)$/), E = s => R.err.push(`Line ${i + 1}: ${s}`);
@@ -628,12 +632,12 @@ function parsePaste(t) {
     const k = m[1].toUpperCase(), ref = m[2], v = m[3].trim();
     if (k === 'DATE') R.u.date = v; else if (k === 'CONTRACTOR') R.u.contractor = v; else if (k === 'WORK') R.u.work = v;
     else if (k === 'HUBS') R.u.hubs = v.split(/[,،]/).map(x => x.trim()).filter(Boolean); else if (k === 'ATTENDANCE') R.u.att = v; else if (k === 'NOTES') R.u.notes = v;
-    else if (k === 'HUB' || k === 'CABLES') {
+    else if (k === 'HUB' || k === 'CABLES' || k === 'PORTS') {
       const hb = ref ? hubRef(ref) : null;
       if (!hb || hb === 'ambiguous') return E(!ref ? 'missing hub name' : hb ? `hub "${ref}" is in more than one feeder, write it like F2/${ref}` : `hub "${ref}" not found`);
       const ch = [];
       v.split(/[,،]/).forEach(p => { p = p.trim(); if (!p) return; const q = p.match(/^(\w+)\s*(\+=|=)\s*(-?\d+(?:\.\d+)?)$/); if (!q) return E(`bad part "${p}"`); if (k === 'HUB' ? !PK.includes(q[1].toLowerCase()) : !/^\d+$/.test(q[1])) return E(`"${q[1]}" is not a valid ${k === 'HUB' ? 'number name' : 'cable length'}`); ch.push({ key: q[1].toLowerCase(), add: q[2] === '+=', val: +q[3] }); });
-      (k === 'HUB' ? R.hubs : R.cab).push({ h: hb, ch });
+      (k === 'HUB' ? R.hubs : k === 'PORTS' ? R.por : R.cab).push({ h: hb, ch });
     } else if (k === 'STOCK') {
       const w = v.split(/\s+/), kind = (w[0] || '').toLowerCase();
       let it = ITEMS.find(x => norm(x) === norm((w[1] || '') + (w[2] || ''))), s = 3;
@@ -658,7 +662,9 @@ async function pastePreview() {
   else if (R.u.hubs || R.u.att || R.u.notes) R.err.push('WORK is required to save a daily update');
   const grp = L => { const g = {}; L.forEach(x => (g[x.h.id] = g[x.h.id] || { h: x.h, ch: [] }).ch.push(...x.ch)); return Object.values(g); };
   grp(R.hubs).forEach(({ h, ch }) => { const row = {}, d = []; ch.forEach(q => { const old = row[q.key] ?? h[q.key] ?? 0, nv = q.add ? old + q.val : q.val; row[q.key] = nv; d.push(`${q.key}: ${h[q.key] ?? '—'} → ${nv}`); }); hubUp.push({ id: h.id, row }); out.push(`<b>${esc(fdr(h).code)}/${esc(h.code)}</b><br>${d.join('<br>')}`); });
-  grp(R.cab).forEach(({ h, ch }) => { const lens = { ...(h.extra?.lens || {}) }, d = []; ch.forEach(q => { const old = +lens[q.key] || 0, nv = q.add ? old + q.val : q.val; if (nv > 0) lens[q.key] = nv; else delete lens[q.key]; d.push(`${q.key} m: ${old} → ${nv}`); }); cabUp.push({ id: h.id, row: { extra: { ...(h.extra || {}), lens, total_cables: Object.values(lens).reduce((s, v) => s + (+v || 0), 0) } } }); out.push(`<b>Cables ${esc(fdr(h).code)}/${esc(h.code)}</b><br>${d.join('<br>')}`); });
+  const ex = {}, gx = h => ex[h.id] || (ex[h.id] = { h, x: { ...(h.extra || {}), lens: { ...(h.extra?.lens || {}) }, ports: { ...(h.extra?.ports || {}) } } });
+  [['cab', 'lens', 'Cables', ' m'], ['por', 'ports', 'Boxes (ports)', '']].forEach(([src, f, t, u]) => grp(R[src]).forEach(({ h, ch }) => { const o = gx(h).x[f], d = []; ch.forEach(q => { const old = +o[q.key] || 0, nv = q.add ? old + q.val : q.val; if (nv > 0) o[q.key] = nv; else delete o[q.key]; d.push(`${q.key}${u}: ${old} → ${nv}`); }); out.push(`<b>${t} ${esc(fdr(h).code)}/${esc(h.code)}</b><br>${d.join('<br>')}`); }));
+  Object.values(ex).forEach(({ h, x }) => { x.total_cables = Object.values(x.lens).reduce((s, v) => s + (+v || 0), 0); const mv = deltaMoves(h.extra, x, 'Paste ' + h.code); cabUp.push({ id: h.id, row: { extra: x }, mv }); if (mv.length) out.push('<b>Warehouse (auto)</b> ' + mv.map(m => `${m.kind === 'out' ? 'OUT' : 'IN'} ${m.qty} × ${m.item}`).join(', ')); });
   R.stock.forEach(s => out.push(`<b>Warehouse</b> ${s.kind === 'in' ? 'IN' : 'OUT'} ${s.qty} × ${esc(s.item)}${s.note ? ' · ' + esc(s.note) : ''}`));
   PP = { R, date, ct, hubUp, cabUp };
   $('#pv').innerHTML = (R.err.length ? `<div class="row open">${R.err.map(esc).join('<br>')}</div>` : '') + out.map(x => `<div class="row">${x}</div>`).join('') + (!R.err.length && out.length ? '<button onclick="pasteApply()">Apply</button>' : out.length || R.err.length ? '' : '<p>Nothing to apply.</p>');
@@ -669,8 +675,49 @@ async function pasteApply() {
   [...hubUp, ...cabUp].forEach(x => jobs.push(sb.from('hubs').update(x.row).eq('id', x.id).select()));
   if (R.stock.length) jobs.push(sb.from('stock_moves').insert(R.stock.map(s => ({ village_id: cur, kind: s.kind, item: s.item, qty: s.qty, move_date: date, note: s.note }))).select());
   const res = await Promise.all(jobs), bad = res.filter(r => r.error || !r.data.length);
-  alert(bad.length ? `${res.length - bad.length} من ${res.length} اتنفذوا. الفاشل: ${bad.map(r => r.error ? r.error.message : 'مفيش صلاحية').join(' | ')}` : 'تم التطبيق ✓');
+  const t = bad.length ? '' : await postMoves(cabUp.flatMap(x => x.mv), date);
+  alert(bad.length ? `${res.length - bad.length} من ${res.length} اتنفذوا. الفاشل: ${bad.map(r => r.error ? r.error.message : 'مفيش صلاحية').join(' | ')}` : 'تم التطبيق ✓' + (t || ''));
   villageView(cur, 's');
+}
+const W0 = w => w.b.Box !== undefined;
+function deltaMoves(oldX, newX, who) {
+  const mv = [], d = (o, n, item) => { const x = (+n || 0) - (+o || 0); if (x && ITEMS.includes(item)) mv.push({ kind: x > 0 ? 'out' : 'in', item, qty: Math.abs(x), note: 'Auto: ' + who }); };
+  new Set([...Object.keys(oldX?.lens || {}), ...Object.keys(newX?.lens || {})]).forEach(k => d(oldX?.lens?.[k], newX?.lens?.[k], `Cable ${k}m`));
+  [9, 10, 11].forEach(k => d(oldX?.ports?.[k], newX?.ports?.[k], 'Box ' + k));
+  return mv;
+}
+async function postMoves(mv, date) {
+  if (!mv.length) return '';
+  const bal = (await loadStock(cur)).b, need = mv.filter(m => m.kind === 'out' && m.qty > (bal[m.item] || 0));
+  let use = mv, note = '';
+  if (need.length) {
+    if (!confirm('الرصيد مش كفاية: ' + need.map(m => m.item).join('، ') + '. موافق تكمل من غير خصم المخزن؟ (إلغاء = ما يتخصمش حاجة)')) return ' · المخزن ما اتغيّرش';
+    use = mv.filter(m => !need.includes(m)); note = ' (بدون خصم: ' + need.length + ')';
+  }
+  if (use.length) { const { error } = await sb.from('stock_moves').insert(use.map(m => ({ ...m, village_id: cur, move_date: date || new Date().toISOString().slice(0, 10) }))); if (error) return ' · خطأ مخزن: ' + msg(error.message); }
+  return ' · المخزن اتحدّث' + note;
+}
+function bulkForm() {
+  shell('وارد دفعة', `<label>التاريخ</label><input id="bd" type="date" value="${new Date().toISOString().slice(0, 10)}"><label>ملاحظة (مثلاً رقم إذن الاستلام)</label><input id="bn"><div dir="ltr">${ITEMS.map((k, i) => `<label class="cb">${k}<input id="bq${i}" type="number" min="0"></label>`).join('')}</div><button onclick="saveBulk()">حفظ كل البنود</button>`, `villageView(${cur},'w')`);
+}
+async function saveBulk() {
+  const rows = ITEMS.map((k, i) => ({ k, q: +$('#bq' + i).value })).filter(x => x.q > 0).map(x => ({ village_id: cur, kind: 'in', item: x.k, qty: x.q, move_date: $('#bd').value, note: $('#bn').value.trim() || null }));
+  if (!rows.length) return alert('اكتب كمية لبند واحد على الأقل');
+  const { error } = await sb.from('stock_moves').insert(rows);
+  if (error) return alert(msg(error.message));
+  villageView(cur, 'w');
+}
+function transferForm() {
+  const o = V.filter(x => x.id != cur); if (!o.length) return alert('مفيش قرية تانية');
+  shell('نقل لقرية تانية', `<label>البند</label><select id="ti">${ITEMS.map(k => `<option>${k}</option>`).join('')}</select><label>الكمية</label><input id="tq" type="number" min="1"><label>إلى قرية</label><select id="tv">${o.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><label>ملاحظة</label><input id="tn"><button onclick="saveTransfer()">نقل</button>`, `villageView(${cur},'w')`);
+}
+async function saveTransfer() {
+  const it = $('#ti').value, q = +$('#tq').value, to = +$('#tv').value, a = V.find(x => x.id == cur).name, b = V.find(x => x.id == to).name, n = $('#tn').value.trim() ? ' · ' + $('#tn').value.trim() : '', d = new Date().toISOString().slice(0, 10);
+  if (!(q > 0)) return alert('اكتب كمية صحيحة');
+  if (q > (D.w.b[it] || 0)) return alert(`الرصيد مش كفاية (المتاح ${D.w.b[it] || 0})`);
+  const { error } = await sb.from('stock_moves').insert([{ village_id: cur, kind: 'out', item: it, qty: q, move_date: d, note: 'Transfer to ' + b + n }, { village_id: to, kind: 'in', item: it, qty: q, move_date: d, note: 'Transfer from ' + a + n }]);
+  if (error) return alert(msg(error.message));
+  villageView(cur, 'w');
 }
 boot();
 </script>
